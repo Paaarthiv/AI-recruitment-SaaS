@@ -1,0 +1,329 @@
+"use client";
+
+import { useEffect, useState, FormEvent } from "react";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import {
+  ArrowLeft,
+  Download,
+  ExternalLink,
+  FileText,
+  Github,
+  Linkedin,
+  Mail,
+  Phone,
+  RefreshCw,
+} from "lucide-react";
+
+import { ResumeUpload } from "@/components/ResumeUpload";
+import { getApplication } from "@/lib/applications";
+import { updateApplicationStatus } from "@/lib/candidate";
+import type { Application, ApplicationStatus } from "@/types/jobs";
+
+const STATUS_OPTIONS: { value: ApplicationStatus; label: string }[] = [
+  { value: "applied", label: "Applied" },
+  { value: "under_review", label: "Under Review" },
+  { value: "shortlisted", label: "Shortlisted" },
+  { value: "technical_round", label: "Technical Round" },
+  { value: "hr_round", label: "HR Round" },
+  { value: "offer", label: "Offer" },
+  { value: "hired", label: "Hired" },
+  { value: "rejected", label: "Rejected" },
+];
+
+function formatDate(v: string) {
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(v));
+}
+
+export default function ApplicationDetailPage() {
+  const params = useParams<{ id: string }>();
+  const router = useRouter();
+
+  const [app, setApp] = useState<Application | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Status update state
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [newStatus, setNewStatus] = useState<ApplicationStatus>("applied");
+  const [updateNotes, setUpdateNotes] = useState("");
+  const [showUpdateForm, setShowUpdateForm] = useState(false);
+
+  useEffect(() => {
+    let ignore = false;
+    getApplication(params.id)
+      .then((data) => {
+        if (!ignore) {
+          setApp(data);
+          setNewStatus(data.status);
+        }
+      })
+      .catch(() => { if (!ignore) setError("Application not found."); })
+      .finally(() => { if (!ignore) setIsLoading(false); });
+    return () => { ignore = true; };
+  }, [params.id]);
+
+  async function handleStatusUpdate(e: FormEvent) {
+    e.preventDefault();
+    if (!app) return;
+    setIsUpdating(true);
+    try {
+      const updated = await updateApplicationStatus(app.id, newStatus, updateNotes);
+      setApp(updated);
+      setUpdateNotes("");
+      setShowUpdateForm(false);
+    } catch (err) {
+      alert("Failed to update status.");
+    } finally {
+      setIsUpdating(false);
+    }
+  }
+
+  if (isLoading) {
+    return <div className="py-20 text-center text-sm text-neutral-400">Loading…</div>;
+  }
+
+  if (error || !app) {
+    return (
+      <div className="py-20 text-center">
+        <p className="text-sm text-danger-600">{error ?? "Failed to load."}</p>
+        <Link href="/dashboard/applications" className="mt-4 text-sm font-medium text-primary-600 hover:underline">
+          Back to applications
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Back nav */}
+      <Link
+        href="/dashboard/pipeline"
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-neutral-500 hover:text-neutral-900"
+      >
+        <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+        Back to Pipeline
+      </Link>
+
+      <div className="grid gap-6 md:grid-cols-3">
+        {/* Left Column (Main details) */}
+        <div className="space-y-6 md:col-span-2">
+          {/* Header */}
+          <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-panel">
+            <h1 className="text-2xl font-bold text-neutral-900">
+              {app.candidate.first_name} {app.candidate.last_name}
+            </h1>
+            <p className="text-sm text-neutral-500">
+              Applied {formatDate(app.applied_at)} for{" "}
+              <Link href={`/dashboard/jobs/${app.job_id}`} className="font-medium text-primary-600 hover:underline">
+                {app.job_title}
+              </Link>
+            </p>
+
+            <div className="mt-6 flex flex-wrap gap-4">
+              <a
+                href={`mailto:${app.candidate.email}`}
+                className="flex items-center gap-2 text-sm text-neutral-600 hover:text-primary-600"
+              >
+                <Mail className="h-4 w-4" />
+                {app.candidate.email}
+              </a>
+              {app.candidate.phone && (
+                <a
+                  href={`tel:${app.candidate.phone}`}
+                  className="flex items-center gap-2 text-sm text-neutral-600 hover:text-primary-600"
+                >
+                  <Phone className="h-4 w-4" />
+                  {app.candidate.phone}
+                </a>
+              )}
+              {app.candidate.linkedin_url && (
+                <a
+                  href={app.candidate.linkedin_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-2 text-sm text-neutral-600 hover:text-primary-600"
+                >
+                  <Linkedin className="h-4 w-4" />
+                  LinkedIn
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
+              {app.candidate.github_url && (
+                <a
+                  href={app.candidate.github_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-2 text-sm text-neutral-600 hover:text-primary-600"
+                >
+                  <Github className="h-4 w-4" />
+                  GitHub
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
+            </div>
+          </div>
+
+          {/* Application History */}
+          <div className="rounded-xl border border-neutral-200 bg-white shadow-panel">
+            <div className="border-b border-neutral-100 px-6 py-4">
+              <h2 className="text-base font-semibold text-neutral-900">Status History</h2>
+            </div>
+            <div className="p-6">
+              {!app.history || app.history.length === 0 ? (
+                <p className="text-sm text-neutral-500">No history available.</p>
+              ) : (
+                <ul className="space-y-6 relative before:absolute before:inset-y-0 before:left-3.5 before:w-px before:bg-neutral-200">
+                  {[...app.history].reverse().map((entry) => (
+                    <li key={entry.id} className="relative flex gap-5 pl-10">
+                      <div className="absolute left-1.5 top-1.5 h-4 w-4 rounded-full border-4 border-white bg-primary-400" />
+                      <div>
+                        <p className="text-sm font-medium text-neutral-900">
+                          {entry.from_status
+                            ? `Moved to ${STATUS_OPTIONS.find((o) => o.value === entry.to_status)?.label ?? entry.to_status}`
+                            : `Application Received`}
+                        </p>
+                        {entry.notes && (
+                          <p className="mt-1 text-sm text-neutral-600 bg-neutral-50 rounded-md p-2">
+                            "{entry.notes}"
+                          </p>
+                        )}
+                        <p className="mt-1.5 text-xs text-neutral-400 flex gap-2">
+                          <span>{formatDate(entry.changed_at)}</span>
+                          {entry.changed_by_email && (
+                            <>
+                              <span>•</span>
+                              <span>by {entry.changed_by_email}</span>
+                            </>
+                          )}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column (Actions) */}
+        <div className="space-y-6">
+          <div className="rounded-xl border border-neutral-200 bg-white shadow-panel p-6 space-y-4">
+            <h2 className="text-base font-semibold text-neutral-900">Resume</h2>
+            {app.resumes && app.resumes.length > 0 ? (
+              <ul className="space-y-3">
+                {app.resumes.map((resume) => (
+                  <li
+                    key={resume.id}
+                    className="rounded-lg border border-neutral-200 bg-neutral-50 p-3"
+                  >
+                    <div className="flex items-start gap-3">
+                      <FileText className="mt-0.5 h-4 w-4 text-neutral-500" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-neutral-900">
+                          {resume.file_name}
+                        </p>
+                        <p className="text-xs text-neutral-500">
+                          {(resume.file_size / 1024 / 1024).toFixed(2)} MB
+                        </p>
+                      </div>
+                    </div>
+                    {resume.download_url && (
+                      <a
+                        href={resume.download_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 ring-1 ring-inset ring-neutral-200 hover:bg-neutral-100"
+                      >
+                        <Download className="h-4 w-4" />
+                        Download
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-neutral-500">No resume uploaded yet.</p>
+            )}
+            <ResumeUpload
+              candidateId={app.candidate.id}
+              applicationId={app.id}
+              onUploadSuccess={() => {
+                getApplication(params.id).then(setApp);
+              }}
+            />
+          </div>
+
+          <div className="rounded-xl border border-neutral-200 bg-white shadow-panel p-6 space-y-4">
+            <h2 className="text-base font-semibold text-neutral-900">Current Status</h2>
+            <div className="flex items-center gap-2">
+              <div className="h-3 w-3 rounded-full bg-primary-500" />
+              <span className="font-medium text-neutral-700">
+                {STATUS_OPTIONS.find((o) => o.value === app.status)?.label ?? app.status}
+              </span>
+            </div>
+
+            {!showUpdateForm ? (
+              <button
+                onClick={() => setShowUpdateForm(true)}
+                className="mt-4 w-full rounded-md bg-neutral-100 px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-200"
+              >
+                Change status
+              </button>
+            ) : (
+              <form onSubmit={handleStatusUpdate} className="mt-4 space-y-3 border-t border-neutral-200 pt-4">
+                <label className="block">
+                  <span className="text-xs font-medium text-neutral-500 uppercase tracking-wide">Move to Stage</span>
+                  <select
+                    value={newStatus}
+                    onChange={(e) => setNewStatus(e.target.value as ApplicationStatus)}
+                    className="mt-1 w-full rounded-md border border-neutral-200 px-3 py-1.5 text-sm"
+                  >
+                    {STATUS_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-neutral-500 uppercase tracking-wide">Notes (optional)</span>
+                  <textarea
+                    value={updateNotes}
+                    onChange={(e) => setUpdateNotes(e.target.value)}
+                    rows={2}
+                    placeholder="E.g. Passed the technical screen"
+                    className="mt-1 w-full rounded-md border border-neutral-200 px-3 py-1.5 text-sm"
+                  />
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={isUpdating}
+                    className="flex-1 rounded-md bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {isUpdating && <RefreshCw className="h-3 w-3 animate-spin" />}
+                    Update
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowUpdateForm(false)}
+                    className="flex-1 rounded-md bg-neutral-100 px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-200"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
