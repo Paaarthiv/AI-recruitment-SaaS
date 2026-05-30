@@ -33,3 +33,10 @@ Thumbs.db
 .idea/
 .vscode/
 
+# Obsidian
+.obsidian/
+
+# Logs / temp
+*.log
+cookies.txt
+*.tsbuildinfo
