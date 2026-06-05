@@ -40,3 +40,8 @@ Thumbs.db
 *.log
 cookies.txt
 *.tsbuildinfo
+
+# frontend / next
+frontend/next.err.log
+frontend/next.out.log
+*.log
