@@ -2,12 +2,9 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { FileText, Send, UploadCloud, X } from "lucide-react";
+import { useParams } from "next/navigation";
+import { Send } from "lucide-react";
 
-import { useAuth } from "@/hooks/use-auth";
-
-import { getApiErrorMessage } from "@/lib/api";
 import { applyToJob, getPublicJob } from "@/lib/jobs";
 import type { ApplicationPayload, PublicJob } from "@/types/jobs";
 
@@ -26,33 +23,14 @@ function employmentLabel(value: string) {
 
 export default function PublicJobDetailPage() {
   const params = useParams<{ slug: string }>();
-  const router = useRouter();
-  const { isAuthenticated, isLoading: authLoading, refreshSession } = useAuth();
-  const [sessionChecked, setSessionChecked] = useState(false);
   const [job, setJob] = useState<PublicJob | null>(null);
   const [form, setForm] = useState<ApplicationPayload>(initialForm);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  const [resumeFile, setResumeFile] = useState<File | null>(null);
-  const [resumeInputKey, setResumeInputKey] = useState(0);
-
-  // Check session on mount (public layout doesn't call refreshSession)
-  useEffect(() => {
-    refreshSession().finally(() => setSessionChecked(true));
-  }, [refreshSession]);
-
-  // Redirect to login if not authenticated
-  useEffect(() => {
-    if (sessionChecked && !authLoading && !isAuthenticated) {
-      router.push(`/login?callbackUrl=/jobs/${params.slug}`);
-    }
-  }, [sessionChecked, authLoading, isAuthenticated, router, params.slug]);
 
   useEffect(() => {
-    if (!sessionChecked || !isAuthenticated) return;
-
     async function loadJob() {
       try {
         setJob(await getPublicJob(params.slug));
@@ -64,67 +42,33 @@ export default function PublicJobDetailPage() {
     }
 
     loadJob();
-  }, [params.slug, isAuthenticated, sessionChecked]);
+  }, [params.slug]);
 
   function updateField(field: keyof ApplicationPayload, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  function handleResumeChange(file: File | undefined) {
-    setError(null);
-    if (!file) {
-      setResumeFile(null);
-      return;
-    }
-
-    const allowedTypes = new Set([
-      "application/pdf",
-      "application/msword",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    ]);
-    if (!allowedTypes.has(file.type)) {
-      setResumeFile(null);
-      setResumeInputKey((key) => key + 1);
-      setError("Resume must be a PDF or DOCX file.");
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setResumeFile(null);
-      setResumeInputKey((key) => key + 1);
-      setError("Resume file size must be under 10MB.");
-      return;
-    }
-
-    setResumeFile(file);
-  }
-
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!job) return;
-    if (!resumeFile) {
-      setError("Please upload your resume before submitting.");
-      return;
-    }
 
     setIsSubmitting(true);
     setError(null);
     try {
-      await applyToJob(job.id, form, resumeFile);
+      await applyToJob(job.id, form);
       setSuccess(true);
       setForm(initialForm);
-      setResumeFile(null);
-      setResumeInputKey((key) => key + 1);
-    } catch (submitError) {
-      setError(getApiErrorMessage(submitError, "Could not submit application. Please try again."));
+    } catch {
+      setError("Could not submit application. This email may have already applied.");
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  if (!sessionChecked || authLoading || (!isAuthenticated) || isLoading) {
+  if (isLoading) {
     return (
       <main className="min-h-screen bg-neutral-50 p-8 text-sm text-neutral-500">
-        Loading...
+        Loading job...
       </main>
     );
   }
@@ -249,50 +193,6 @@ export default function PublicJobDetailPage() {
                 className="mt-1 h-10 w-full rounded-md border border-neutral-200 px-3 text-sm outline-none focus:border-primary-500"
               />
             </label>
-            <div>
-              <span className="text-sm font-medium text-neutral-700">Resume</span>
-              <label className="mt-1 flex cursor-pointer flex-col items-center justify-center rounded-md border-2 border-dashed border-neutral-300 bg-neutral-50 px-4 py-6 text-center transition hover:border-primary-400 hover:bg-primary-50/40">
-                <input
-                  key={resumeInputKey}
-                  type="file"
-                  accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  required
-                  className="sr-only"
-                  onChange={(event) => handleResumeChange(event.target.files?.[0])}
-                />
-                <UploadCloud className="h-8 w-8 text-neutral-500" aria-hidden="true" />
-                <span className="mt-3 text-sm font-semibold text-neutral-900">
-                  Click to upload resume
-                </span>
-                <span className="mt-1 text-xs text-neutral-500">
-                  PDF or DOCX, max 10MB
-                </span>
-              </label>
-              {resumeFile && (
-                <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-neutral-200 bg-white px-3 py-2">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <FileText className="h-4 w-4 shrink-0 text-neutral-500" aria-hidden="true" />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-neutral-900">{resumeFile.name}</p>
-                      <p className="text-xs text-neutral-500">
-                        {(resumeFile.size / 1024 / 1024).toFixed(2)} MB
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setResumeFile(null);
-                      setResumeInputKey((key) => key + 1);
-                    }}
-                    className="rounded-md p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700"
-                    aria-label="Remove resume"
-                  >
-                    <X className="h-4 w-4" aria-hidden="true" />
-                  </button>
-                </div>
-              )}
-            </div>
             <button
               type="submit"
               disabled={isSubmitting}

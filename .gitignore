@@ -19,7 +19,6 @@ npm-debug.log*
 
 # Environment
 .env
-backend/.env
 .env.local
 .env.*.local
 

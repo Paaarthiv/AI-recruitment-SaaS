@@ -4,7 +4,6 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Save } from "lucide-react";
 
-import { ApiError } from "@/lib/api";
 import { createJob } from "@/lib/jobs";
 import type { EmploymentType, JobPayload, RemotePolicy } from "@/types/jobs";
 
@@ -37,12 +36,8 @@ export default function CreateJobPage() {
     try {
       const job = await createJob(form);
       router.push(`/dashboard/jobs/${job.id}`);
-    } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? err.data?.detail || err.message
-          : "Could not create job. Check the required fields and try again.",
-      );
+    } catch {
+      setError("Could not create job. Check the required fields and try again.");
     } finally {
       setIsSubmitting(false);
     }

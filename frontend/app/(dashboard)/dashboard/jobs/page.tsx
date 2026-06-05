@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { BarChart3, EyeOff, LockKeyhole, Plus, RefreshCcw, Search, Trash2 } from "lucide-react";
+import { Archive, EyeOff, LockKeyhole, Plus, RefreshCcw, Search } from "lucide-react";
 
-import { closeJob, deleteJob, getJobs, publishJob, unpublishJob } from "@/lib/jobs";
+import { archiveJob, closeJob, getJobs, publishJob, unpublishJob } from "@/lib/jobs";
 import type { Job, JobStatus } from "@/types/jobs";
 
 const statusLabels: Record<JobStatus, string> = {
@@ -110,12 +110,9 @@ export default function JobsPage() {
     setJobs((current) => current.map((item) => (item.id === updated.id ? updated : item)));
   }
 
-  async function handleDelete(job: Job) {
-    const confirmed = window.confirm(`Delete "${job.title}"? This removes it from the jobs list.`);
-    if (!confirmed) return;
-
-    await deleteJob(job.id);
-    setJobs((current) => current.filter((item) => item.id !== job.id));
+  async function handleArchive(job: Job) {
+    const updated = await archiveJob(job.id);
+    setJobs((current) => current.map((item) => (item.id === updated.id ? updated : item)));
   }
 
   return (
@@ -252,28 +249,14 @@ export default function JobsPage() {
                       >
                         View
                       </Link>
-                      <Link
-                        href={`/dashboard/jobs/${job.id}#ranked-candidates`}
-                        className="inline-flex h-9 items-center gap-1.5 rounded-md border border-primary-600/30 bg-primary-50 px-3 text-sm font-semibold text-primary-700 hover:bg-primary-100"
-                        title="Open ranked candidates"
-                      >
-                        <BarChart3 className="h-3.5 w-3.5" aria-hidden="true" />
-                        Ranking
-                      </Link>
-                      {job.status === "draft" ||
-                      job.status === "published" ||
-                      job.status === "closed" ? (
+                      {job.status === "draft" || job.status === "published" ? (
                         <button
                           type="button"
                           onClick={() => updateStatus(job)}
                           className="inline-flex h-9 items-center gap-1.5 rounded-md border border-neutral-200 px-3 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
                         >
                           <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />
-                          {job.status === "published"
-                            ? "Unpublish"
-                            : job.status === "closed"
-                              ? "Republish"
-                              : "Publish"}
+                          {job.status === "published" ? "Unpublish" : "Publish"}
                         </button>
                       ) : null}
                       {job.status === "published" && (
@@ -289,11 +272,11 @@ export default function JobsPage() {
                       {job.status !== "archived" && (
                         <button
                           type="button"
-                          onClick={() => handleDelete(job)}
-                          className="inline-flex h-9 items-center justify-center rounded-md border border-danger-600/30 px-3 text-sm font-medium text-danger-600 hover:bg-danger-600/10"
-                          title="Delete job"
+                          onClick={() => handleArchive(job)}
+                          className="inline-flex h-9 items-center justify-center rounded-md border border-neutral-200 px-3 text-sm font-medium text-neutral-700 hover:bg-neutral-50"
+                          title="Archive job"
                         >
-                          <Trash2 className="h-4 w-4" aria-hidden="true" />
+                          <Archive className="h-4 w-4" aria-hidden="true" />
                         </button>
                       )}
                     </div>
