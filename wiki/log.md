@@ -2,7 +2,7 @@
 type: log
 title: "Activity Log"
 date_created: 2025-05-22
-date_updated: 2026-06-05
+date_updated: 2026-06-10
 tags: [wiki/log]
 ---
 
@@ -263,3 +263,74 @@ Decision recorded: stages are **per-job** (matches the sprint task list; more fl
 Verification: migrations clean; full backend suite **66 passed** (4 new pipeline tests); frontend type-check/lint/build pass; real-data smoke confirmed seeding, board counts, atomic move with dual history, and revert. Deferred: WebSockets, optimistic locking, auto_actions execution, interview feedback, funnel analytics.
 
 **Pages touched:** [[Sprint 9 Hiring Pipeline Implementation]], [[index|Wiki Index]], [[log|Activity Log]]
+
+---
+
+## [2026-06-10 21:41] planning | Sprint 10 Candidate Dashboard
+
+Verified Sprint 8 and Sprint 9 against the current codebase and validation suite, then filed the Sprint 10 candidate dashboard implementation plan. Sprint 10 should build a recruiter-facing candidate profile dashboard around existing parsed resume data, deterministic scores, pipeline stages, activity history, and candidate notes, with AI summary generation planned as cached recruiter assistance rather than ranking logic.
+
+**Pages touched:** [[Sprint 10 Candidate Dashboard Plan]], [[index|Wiki Index]], [[overview|Overview]], [[log|Activity Log]]
+
+---
+
+## [2026-06-10 22:16] feature | Sprint 10 Core Candidate Dashboard
+
+Implemented the core Sprint 10 candidate dashboard slice. Backend now has `CandidateNote`, tenant-scoped candidate profile aggregation, candidate notes endpoints, and tests for profile shape, organization isolation, missing parsed resumes, multiple applications, and notes lifecycle. Frontend now has `/dashboard/candidates`, `/dashboard/candidates/[id]`, profile tabs for overview/resume/scores/activity/notes, and links from existing recruiter application views.
+
+Validation: migrations applied locally; backend system check, Ruff, focused candidate tests, full backend tests, frontend type-check, frontend lint, and production build pass. Deferred: AI summary generation, candidate comparison, real-time updates, interview scheduling, photo upload, and analytics.
+
+**Pages touched:** [[Sprint 10 Candidate Dashboard Plan]], [[index|Wiki Index]], [[overview|Overview]], [[log|Activity Log]]
+
+---
+
+## [2026-06-11 00:20] feature | Sprint 11 Semantic Search
+
+Implemented Sprint 11 core semantic search. Backend now exposes recruiter-scoped `/api/v1/search/`, `/api/v1/search/candidates/`, and `/api/v1/search/jobs/` endpoints using existing embeddings plus deterministic hybrid relevance (semantic similarity + keyword match), filters, result limits, and short cache TTLs. Frontend now has `/dashboard/search` with query input, search type tabs, filters, score cards, and links into candidate profiles and job details.
+
+Validation: backend Ruff passes, Django system check passes, AI engine tests pass, candidate portal regression tests pass, frontend type-check passes, frontend lint passes, and frontend production build passes. Also fixed the existing SQLite test blocker by making historical pgvector HNSW index migrations Postgres-only at database execution time while preserving migration state.
+
+**Pages touched:** [[Sprint 11 Semantic Search Implementation]], [[index|Wiki Index]], [[overview|Overview]], [[log|Activity Log]]
+
+---
+
+## [2026-06-11 21:15] planning | Sprint 11 Close-Out and Sprint 12 Plan
+
+Audited the Sprint 11 semantic search implementation after the duplicate-key and keyword-matching fixes. Confirmed the core Sprint 11 scope is complete: recruiter-scoped search APIs, candidate/job/all search modes, semantic + keyword hybrid relevance, filters, cached responses, dashboard search UI, duplicate-safe candidate results, and normalized keyword matching. Deferred Sprint 11 enhancements remain BM25/Postgres full-text ranking, saved searches, analytics, Redis-backed distributed cache, typeahead, highlighting, salary range, and location-radius facets.
+
+Filed the Sprint 12 AI Interview Assistance plan. Sprint 12 should add generated interview question sets, category/rationale/evaluation criteria, question notes, and a question-bank fallback while preserving the rule that AI assistance must not change score, rank, status, or hiring recommendation.
+
+Validation: backend Ruff passes, Django system check passes, migration drift check passes, AI engine tests pass, candidate portal regression tests pass, frontend type-check passes, frontend lint passes, production build passes, backend health returns 200, and unauthenticated browser smoke redirects `/dashboard/search` to login without console errors.
+
+**Pages touched:** [[Sprint 11 Semantic Search Implementation]], [[Sprint 12 AI Interview Assistance Plan]], [[index|Wiki Index]], [[overview|Overview]], [[log|Activity Log]]
+
+---
+
+## [2026-06-11 22:40] feature | Sprint 12 Core AI Interview Assistance
+
+Implemented Sprint 12 core. Backend now has an `interviews` app with application-scoped question sets, questions, per-question notes, question-bank items, recruiter-scoped APIs, LLM generation with schema validation, and question-bank fallback when generation fails. Frontend now adds an Interview Prep panel to recruiter application detail with generate/regenerate, grouped question cards, rationale, evaluation criteria, model/fallback indicator, and recruiter notes.
+
+The implementation preserves the product rule that interview assistance must not alter application score, rank, status, pipeline stage, or hiring recommendation.
+
+Validation: backend Ruff passes, Django system check passes, migration drift check passes, new interview tests pass, focused AI/candidate/interview regression tests pass, frontend type-check passes, frontend lint passes, production build passes, local Postgres migration applied, backend health returns 200, and the interview API requires authentication.
+
+Deferred: pin/reorder UI, manual question editing UI, question bank picker modal, print/export view, scheduling integrations, answer evaluation, recommendations, analytics, and a broader bias-evaluation fixture suite.
+
+**Pages touched:** [[Sprint 12 AI Interview Assistance Plan]], [[index|Wiki Index]], [[overview|Overview]], [[log|Activity Log]]
+
+---
+
+---
+
+## [2026-06-11 19:20] feature | Sprint 13A — Notifications (in-app + email)
+
+Verified Sprints 10–12 (candidate dashboard, semantic search, interview AI) all working — 83 backend tests, frontend builds, live smoke of search + interview generation passed — then implemented Sprint 13 Phase 13A.
+
+Phased per decision: 13A now (in-app + email + per-event preferences, bell updated by polling — no new infra); 13B later (Django Channels/WebSocket real-time, which also retro-enables the Sprint 9 live board). Email via Django SMTP (console in dev, env-configured SMTP in prod — no provider SDK).
+
+New `apps.notifications`: `Notification` + `NotificationPreference` models; `notify()` service (preference-aware, self-actor skipped) + `send_notification_email` task; REST endpoints (list/unread-count/read/mark-all-read/preferences). Triggers wired into status-update, pipeline move, and public apply (notify the job owner). Frontend: `NotificationBell` in the dashboard top bar (badge + dropdown + polling) and a preferences toggle matrix page.
+
+Verification: migration applied; full backend suite green incl. 8 new notification tests; frontend type-check/lint/build pass; live smoke confirmed in-app row + console email + self-actor skip + mark-all-read.
+
+**Files touched:** new `backend/apps/notifications/*`; `backend/config/settings/base.py`, `backend/config/urls.py`; triggers in `apps/candidates/views.py`, `apps/jobs/views.py`, `apps/pipeline/views.py`; `frontend/components/NotificationBell.tsx`, `frontend/lib/notifications.ts`, `frontend/types/notifications.ts`, `frontend/app/(dashboard)/layout.tsx`, `frontend/app/(dashboard)/dashboard/settings/notifications/page.tsx`
+**Pages touched:** [[Sprint 13 Notifications Implementation]], [[index|Wiki Index]], [[log|Activity Log]]

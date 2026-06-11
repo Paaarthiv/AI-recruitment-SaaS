@@ -2,13 +2,13 @@
 type: index
 title: "Wiki Index"
 date_created: 2025-05-22
-date_updated: 2026-06-05
+date_updated: 2026-06-11
 tags: [wiki/index]
 ---
 
 # Wiki Index
 
-> Last updated: 2026-06-05 | Total pages: 55 | Total sources: 1
+> Last updated: 2026-06-11 | Total pages: 58 | Total sources: 1
 
 ## Overview
 
@@ -78,6 +78,10 @@ tags: [wiki/index]
 | [[LLM Provider Architecture]] | framework | 2026-05-31 | product/architecture, ai/llm, resume/parsing, product/operations |
 | [[Sprint 8 Candidate Ranking Implementation]] | framework | 2026-06-06 | product/feature, product/architecture, ai/embeddings, ai/scoring, recruitment/screening, ranking, sprint/complete |
 | [[Sprint 9 Hiring Pipeline Implementation]] | framework | 2026-06-07 | product/feature, product/architecture, recruitment/pipeline, kanban, workflow, sprint/complete |
+| [[Sprint 13 Notifications Implementation]] | framework | 2026-06-11 | product/feature, product/architecture, notifications, email, sprint/phase-complete |
+| [[Sprint 10 Candidate Dashboard Plan]] | framework | 2026-06-10 | product/feature, product/ux, product/architecture, recruitment/screening, candidate-dashboard, sprint/implemented |
+| [[Sprint 11 Semantic Search Implementation]] | framework | 2026-06-11 | product/feature, product/architecture, ai/embeddings, ai/nlp, recruitment/sourcing, semantic-search, sprint/implemented |
+| [[Sprint 12 AI Interview Assistance Plan]] | framework | 2026-06-11 | product/feature, product/architecture, ai/llm, recruitment/interview, recruitment/assessment, sprint/implemented |
 
 ## Decisions
 
