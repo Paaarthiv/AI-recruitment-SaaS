@@ -7,6 +7,16 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+class PostgresOnlyHnswIndex(migrations.AddIndex):
+    def database_forwards(self, app_label, schema_editor, from_state, to_state):
+        if schema_editor.connection.vendor == "postgresql":
+            super().database_forwards(app_label, schema_editor, from_state, to_state)
+
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+        if schema_editor.connection.vendor == "postgresql":
+            super().database_backwards(app_label, schema_editor, from_state, to_state)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -37,7 +47,7 @@ class Migration(migrations.Migration):
             name='embedding_text_hash',
             field=models.CharField(blank=True, db_index=True, max_length=64),
         ),
-        migrations.AddIndex(
+        PostgresOnlyHnswIndex(
             model_name='job',
             index=pgvector.django.indexes.HnswIndex(ef_construction=64, fields=['embedding'], m=16, name='jobs_job_embedding_hnsw', opclasses=['vector_cosine_ops']),
         ),

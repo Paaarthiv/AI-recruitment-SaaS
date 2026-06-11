@@ -11,8 +11,11 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/v1/auth/", include("apps.accounts.urls")),
     path("api/v1/jobs/", include("apps.jobs.urls")),
+    path("api/v1/search/", include("apps.ai_engine.urls")),
+    path("api/v1/interviews/", include("apps.interviews.urls")),
     path("api/v1/applications/", include("apps.candidates.urls")),
     path("api/v1/pipeline/", include("apps.pipeline.urls")),
+    path("api/v1/notifications/", include("apps.notifications.urls")),
     path("api/v1/resumes/<uuid:pk>/view/", ResumeViewFileView.as_view(), name="resume-view"),
     path(
         "api/v1/resumes/<uuid:pk>/download/",

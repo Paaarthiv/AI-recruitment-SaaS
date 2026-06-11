@@ -27,6 +27,8 @@ from apps.candidates.serializers import (
 from apps.candidates.tasks import extract_resume_text, extract_resume_text_from_bytes
 from apps.core.models import AuditLog
 from apps.core.storage import upload_file
+from apps.notifications.models import Notification
+from apps.notifications.services import notify_recruiters_for_job
 from apps.pipeline.services import ensure_default_pipeline_stages
 
 from .models import Job
@@ -534,6 +536,18 @@ class PublicJobApplyView(PublicApplicationResponseMixin, generics.CreateAPIView)
             else "application.reused"
         )
         AuditLog.log(action=audit_action, entity=application)
+        if getattr(serializer, "application_created", True):
+            notify_recruiters_for_job(
+                self.job,
+                Notification.EventType.NEW_APPLICATION,
+                title="New application",
+                body=f"{application.candidate.full_name} applied to {self.job.title}.",
+                data={
+                    "url": f"/dashboard/applications/{application.id}",
+                    "application_id": str(application.id),
+                    "job_id": str(self.job.id),
+                },
+            )
         return Response(
             ApplicationSerializer(application).data,
             status=self.get_success_status(serializer),

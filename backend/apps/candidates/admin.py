@@ -1,7 +1,7 @@
 
 from django.contrib import admin
 
-from .models import Application, Candidate
+from .models import Application, Candidate, CandidateNote
 
 
 @admin.register(Candidate)
@@ -25,3 +25,12 @@ class ApplicationAdmin(admin.ModelAdmin):
     )
     readonly_fields = ("id", "applied_at", "updated_at")
     ordering = ("-applied_at",)
+
+
+@admin.register(CandidateNote)
+class CandidateNoteAdmin(admin.ModelAdmin):
+    list_display = ("candidate", "organization", "author", "created_at")
+    list_filter = ("organization",)
+    search_fields = ("candidate__email", "candidate__first_name", "candidate__last_name", "body")
+    readonly_fields = ("id", "created_at", "updated_at")
+    ordering = ("-created_at",)

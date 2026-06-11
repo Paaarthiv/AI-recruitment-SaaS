@@ -1,7 +1,10 @@
 
 from decimal import Decimal
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
+from django.core.cache import cache
 from django.urls import reverse
 from rest_framework.test import APIClient
 
@@ -113,6 +116,11 @@ def create_application_with_parsed_resume(
         embedding_text_hash=f"{email}-hash",
     )
     return application
+
+
+@pytest.fixture(autouse=True)
+def clear_search_cache():
+    cache.clear()
 
 
 def test_hybrid_score_uses_sprint_7_formula():
@@ -330,3 +338,231 @@ def test_ranked_candidates_skills_met_filter(api_client):
     payload = response.json()
     assert payload["filters"]["skills_met"] is True
     assert [r["candidate"]["email"] for r in payload["results"]] == ["strong@example.com"]
+
+
+def test_semantic_candidate_search_returns_hybrid_ranked_results(api_client):
+    user, organization = create_recruiter()
+    job = create_job(organization, user)
+    strong = create_application_with_parsed_resume(
+        organization=organization,
+        job=job,
+        email="python@example.com",
+        skills=["Python", "Django", "PostgreSQL"],
+        years=5,
+        embedding=vector(1.0),
+    )
+    create_application_with_parsed_resume(
+        organization=organization,
+        job=job,
+        email="react@example.com",
+        skills=["React"],
+        years=1,
+        embedding=vector(0.0, 1.0),
+    )
+    api_client.force_authenticate(user=user)
+
+    with patch(
+        "apps.ai_engine.search.generate_embedding",
+        return_value=SimpleNamespace(vector=vector(1.0)),
+    ):
+        response = api_client.get(
+            reverse("semantic-search-candidates"),
+            {"q": "senior python developer"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["type"] == "candidates"
+    assert payload["count"] >= 1
+    assert payload["results"][0]["candidate_id"] == str(strong.candidate_id)
+    assert payload["results"][0]["score"] > 0
+    assert payload["results"][0]["semantic_score"] == 100
+
+
+def test_semantic_candidate_search_filters_by_skill_and_experience(api_client):
+    user, organization = create_recruiter()
+    job = create_job(organization, user)
+    matching = create_application_with_parsed_resume(
+        organization=organization,
+        job=job,
+        email="senior@example.com",
+        skills=["Python", "Django"],
+        years=6,
+        embedding=vector(1.0),
+    )
+    create_application_with_parsed_resume(
+        organization=organization,
+        job=job,
+        email="junior@example.com",
+        skills=["Python"],
+        years=1,
+        embedding=vector(1.0),
+    )
+    api_client.force_authenticate(user=user)
+
+    with patch(
+        "apps.ai_engine.search.generate_embedding",
+        return_value=SimpleNamespace(vector=vector(1.0)),
+    ):
+        response = api_client.get(
+            reverse("semantic-search-candidates"),
+            {"q": "python django", "skills": "Django", "min_experience": 3},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 1
+    assert payload["results"][0]["candidate_id"] == str(matching.candidate_id)
+
+
+def test_semantic_job_search_respects_organization_and_remote_policy(api_client):
+    user, organization = create_recruiter()
+    remote_job = create_job(organization, user)
+    remote_job.title = "Remote Python Engineer"
+    remote_job.remote_policy = Job.RemotePolicy.REMOTE
+    remote_job.embedding = vector(1.0)
+    remote_job.save(update_fields=["title", "remote_policy", "embedding", "updated_at"])
+
+    other_user = User.objects.create_user(
+        email="other@example.com",
+        password="StrongPass123!",
+        role=User.Role.RECRUITER,
+    )
+    other_org = Organization.objects.create(
+        name="Other Org",
+        approval_status=Organization.ApprovalStatus.APPROVED,
+    )
+    Job.objects.create(
+        organization=other_org,
+        created_by=other_user,
+        title="Remote Python Engineer",
+        description="Other org role.",
+        requirements="Python.",
+        location="Remote",
+        remote_policy=Job.RemotePolicy.REMOTE,
+        embedding=vector(1.0),
+    )
+    api_client.force_authenticate(user=user)
+
+    with patch(
+        "apps.ai_engine.search.generate_embedding",
+        return_value=SimpleNamespace(vector=vector(1.0)),
+    ):
+        response = api_client.get(
+            reverse("semantic-search-jobs"),
+            {"q": "remote python", "remote_policy": "remote"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 1
+    assert payload["results"][0]["job_id"] == str(remote_job.id)
+
+
+def test_semantic_search_all_combines_candidates_and_jobs(api_client):
+    user, organization = create_recruiter()
+    job = create_job(organization, user)
+    application = create_application_with_parsed_resume(
+        organization=organization,
+        job=job,
+        email="asha@example.com",
+        skills=["Python"],
+        years=4,
+        embedding=vector(1.0),
+    )
+    api_client.force_authenticate(user=user)
+
+    with patch(
+        "apps.ai_engine.search.generate_embedding",
+        return_value=SimpleNamespace(vector=vector(1.0)),
+    ):
+        response = api_client.get(reverse("semantic-search"), {"q": "python"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    result_types = {result["type"] for result in payload["results"]}
+    assert {"candidate", "job"}.issubset(result_types)
+    candidate_result = next(
+        result for result in payload["results"] if result["type"] == "candidate"
+    )
+    assert candidate_result["candidate_id"] == str(application.candidate_id)
+
+
+def test_semantic_candidate_search_deduplicates_multiple_resumes(api_client):
+    user, organization = create_recruiter()
+    job = create_job(organization, user)
+    application = create_application_with_parsed_resume(
+        organization=organization,
+        job=job,
+        email="duplicate@example.com",
+        skills=["React"],
+        years=2,
+        embedding=vector(0.4),
+    )
+    second_resume = Resume.objects.create(
+        candidate=application.candidate,
+        application=application,
+        file_url=f"{organization.id}/{application.candidate_id}/resume-2.pdf",
+        file_name="resume-2.pdf",
+        file_size=100,
+        mime_type="application/pdf",
+        status=Resume.Status.COMPLETED,
+    )
+    better_parse = ParsedResume.objects.create(
+        resume=second_resume,
+        candidate=application.candidate,
+        application=application,
+        status=ParsedResume.Status.COMPLETED,
+        data={
+            "skills": [{"name": "Python"}, {"name": "Django"}],
+            "_metadata": {"total_years_experience": 5},
+        },
+        confidence=ParsedResume.Confidence.HIGH,
+        embedding=vector(1.0),
+        embedding_model="BAAI/bge-small-en-v1.5",
+        embedding_text_hash="duplicate-better-hash",
+    )
+    api_client.force_authenticate(user=user)
+
+    with patch(
+        "apps.ai_engine.search.generate_embedding",
+        return_value=SimpleNamespace(vector=vector(1.0)),
+    ):
+        response = api_client.get(reverse("semantic-search-candidates"), {"q": "python"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 1
+    assert payload["results"][0]["candidate_id"] == str(application.candidate_id)
+    assert payload["results"][0]["parsed_resume_id"] == str(better_parse.id)
+
+
+def test_semantic_candidate_search_matches_normalized_keywords(api_client):
+    user, organization = create_recruiter()
+    job = create_job(organization, user)
+    application = create_application_with_parsed_resume(
+        organization=organization,
+        job=job,
+        email="frontend@example.com",
+        skills=["Front-End", "JavaScript"],
+        years=3,
+        embedding=vector(0.0),
+    )
+    api_client.force_authenticate(user=user)
+
+    with patch(
+        "apps.ai_engine.search.generate_embedding",
+        return_value=SimpleNamespace(vector=vector(0.0)),
+    ):
+        response = api_client.get(
+            reverse("semantic-search-candidates"),
+            {"q": "frontend javascript"},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 1
+    result = payload["results"][0]
+    assert result["candidate_id"] == str(application.candidate_id)
+    assert result["keyword_score"] == 100
+    assert result["score"] == 30

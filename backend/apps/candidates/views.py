@@ -2,6 +2,7 @@
 import hashlib
 
 from django.conf import settings
+from django.db.models import Q
 from django.http import HttpResponse
 from django.utils.http import content_disposition_header
 from rest_framework import generics, status, views
@@ -12,14 +13,18 @@ from apps.accounts.permissions import IsVerifiedRecruiter
 from apps.core.models import AuditLog
 from apps.core.storage import download_file, upload_file
 from apps.jobs.models import Job
-from apps.pipeline.models import PipelineStage
+from apps.notifications.models import Notification
+from apps.notifications.services import notify_recruiters_for_job
+from apps.pipeline.models import PipelineStage, PipelineStageHistory
 
-from .models import Application, Candidate, Resume
+from .models import Application, Candidate, CandidateNote, ParsedResume, Resume
 from .serializers import (
     ApplicationDetailSerializer,
     ApplicationSerializer,
     ApplicationStatusUpdateSerializer,
+    CandidateNoteSerializer,
     CandidateSerializer,
+    ParsedResumeSerializer,
     ResumeSerializer,
     ResumeUploadSerializer,
 )
@@ -71,11 +76,20 @@ class CandidateListView(generics.ListAPIView):
 
     def get_queryset(self):
         organization = get_recruiter_organization(self.request)
-        return (
+        queryset = (
             Candidate.objects.filter(organization=organization)
             .prefetch_related("resumes")
             .order_by("-created_at")
         )
+        search = self.request.query_params.get("search", "").strip()
+        if search:
+            queryset = queryset.filter(
+                Q(first_name__icontains=search)
+                | Q(last_name__icontains=search)
+                | Q(email__icontains=search)
+                | Q(phone__icontains=search)
+            )
+        return queryset
 
 class CandidateDetailView(generics.RetrieveAPIView):
     """
@@ -87,6 +101,264 @@ class CandidateDetailView(generics.RetrieveAPIView):
     def get_queryset(self):
         organization = get_recruiter_organization(self.request)
         return Candidate.objects.filter(organization=organization).prefetch_related("resumes")
+
+
+class CandidateProfileView(views.APIView):
+    """
+    GET /api/v1/applications/candidates/<pk>/profile/
+    Aggregated recruiter view of a candidate across jobs, resumes, scores, notes, and activity.
+    """
+
+    permission_classes = [IsVerifiedRecruiter]
+
+    def get(self, request, pk, *args, **kwargs):
+        organization = get_recruiter_organization(request)
+        candidate = generics.get_object_or_404(
+            Candidate.objects.filter(organization=organization).prefetch_related("resumes"),
+            pk=pk,
+        )
+        applications = (
+            Application.objects.filter(candidate=candidate, organization=organization)
+            .select_related("candidate", "job", "organization", "current_stage")
+            .prefetch_related("history__changed_by", "resumes__parsed_resume")
+            .order_by("-applied_at")
+        )
+        latest_application = applications.first()
+        latest_resume = (
+            Resume.objects.filter(candidate=candidate)
+            .select_related("candidate", "application", "parsed_resume")
+            .order_by("-created_at")
+            .first()
+        )
+        latest_parsed_resume = (
+            ParsedResume.objects.filter(candidate=candidate)
+            .select_related("resume", "candidate", "application")
+            .order_by("-parsed_at", "-created_at")
+            .first()
+        )
+        notes = CandidateNote.objects.filter(candidate=candidate, organization=organization)
+
+        return Response(
+            {
+                "candidate": CandidateSerializer(candidate).data,
+                "latest_application": (
+                    ApplicationSerializer(latest_application).data if latest_application else None
+                ),
+                "applications": ApplicationDetailSerializer(
+                    applications,
+                    many=True,
+                    context={
+                        "request": request,
+                        "include_resume_download_urls": True,
+                        "include_parsed_resume": True,
+                    },
+                ).data,
+                "latest_resume": (
+                    ResumeSerializer(
+                        latest_resume,
+                        context={
+                            "request": request,
+                            "include_download_url": True,
+                            "include_parsed_resume": True,
+                        },
+                    ).data
+                    if latest_resume
+                    else None
+                ),
+                "parsed_resume": (
+                    ParsedResumeSerializer(latest_parsed_resume).data
+                    if latest_parsed_resume
+                    else None
+                ),
+                "activity": self._build_activity(candidate, applications),
+                "notes": CandidateNoteSerializer(notes, many=True).data,
+            }
+        )
+
+    def _build_activity(self, candidate, applications):
+        application_ids = [application.id for application in applications]
+        activity = []
+
+        for application in applications:
+            activity.append(
+                {
+                    "id": f"application:{application.id}",
+                    "type": "application_submitted",
+                    "timestamp": application.applied_at,
+                    "application_id": str(application.id),
+                    "job_id": str(application.job_id),
+                    "job_title": application.job.title,
+                    "title": "Application submitted",
+                    "description": f"Applied for {application.job.title}.",
+                    "actor_email": None,
+                }
+            )
+
+        for history in (
+            Application.objects.none()
+            if not application_ids
+            else Application.objects.filter(id__in=application_ids)
+            .select_related("job")
+            .prefetch_related("history__changed_by")
+        ):
+            for entry in history.history.all():
+                activity.append(
+                    {
+                        "id": f"status:{entry.id}",
+                        "type": "status_change",
+                        "timestamp": entry.changed_at,
+                        "application_id": str(history.id),
+                        "job_id": str(history.job_id),
+                        "job_title": history.job.title,
+                        "title": "Status changed",
+                        "description": (
+                            f"{entry.from_status or 'new'} -> {entry.to_status}"
+                            if entry.from_status
+                            else f"Set to {entry.to_status}"
+                        ),
+                        "notes": entry.notes,
+                        "actor_email": entry.changed_by.email if entry.changed_by else None,
+                    }
+                )
+
+        stage_history = (
+            PipelineStageHistory.objects.filter(application_id__in=application_ids)
+            .select_related("application__job", "from_stage", "to_stage", "moved_by")
+            .order_by("-moved_at")
+        )
+        for entry in stage_history:
+            from_name = entry.from_stage.name if entry.from_stage else "No stage"
+            to_name = entry.to_stage.name if entry.to_stage else "No stage"
+            activity.append(
+                {
+                    "id": f"stage:{entry.id}",
+                    "type": "stage_change",
+                    "timestamp": entry.moved_at,
+                    "application_id": str(entry.application_id),
+                    "job_id": str(entry.application.job_id),
+                    "job_title": entry.application.job.title,
+                    "title": "Pipeline stage changed",
+                    "description": f"{from_name} -> {to_name}",
+                    "notes": entry.notes,
+                    "actor_email": entry.moved_by.email if entry.moved_by else None,
+                }
+            )
+
+        resumes = (
+            Resume.objects.filter(candidate=candidate)
+            .select_related("application__job", "parsed_resume")
+            .order_by("-created_at")
+        )
+        for resume in resumes:
+            activity.append(
+                {
+                    "id": f"resume:{resume.id}:uploaded",
+                    "type": "resume_uploaded",
+                    "timestamp": resume.created_at,
+                    "application_id": str(resume.application_id) if resume.application_id else None,
+                    "job_id": str(resume.application.job_id) if resume.application_id else None,
+                    "job_title": resume.application.job.title if resume.application_id else None,
+                    "title": "Resume uploaded",
+                    "description": resume.file_name,
+                    "actor_email": resume.uploaded_by.email if resume.uploaded_by else None,
+                }
+            )
+            try:
+                parsed_resume = resume.parsed_resume
+            except ParsedResume.DoesNotExist:
+                continue
+            activity.append(
+                {
+                    "id": f"resume:{resume.id}:parsed",
+                    "type": "resume_parsed",
+                    "timestamp": parsed_resume.parsed_at or parsed_resume.updated_at,
+                    "application_id": str(resume.application_id) if resume.application_id else None,
+                    "job_id": str(resume.application.job_id) if resume.application_id else None,
+                    "job_title": resume.application.job.title if resume.application_id else None,
+                    "title": "Resume parsed",
+                    "description": f"Completed via {parsed_resume.parser_model or 'parser'}",
+                    "actor_email": None,
+                }
+            )
+
+        return sorted(activity, key=lambda item: item["timestamp"], reverse=True)[:100]
+
+
+class CandidateNoteListCreateView(views.APIView):
+    permission_classes = [IsVerifiedRecruiter]
+
+    def get_candidate(self, request, pk):
+        organization = get_recruiter_organization(request)
+        return generics.get_object_or_404(Candidate, pk=pk, organization=organization)
+
+    def get(self, request, pk, *args, **kwargs):
+        candidate = self.get_candidate(request, pk)
+        notes = CandidateNote.objects.filter(
+            candidate=candidate,
+            organization=candidate.organization,
+        )
+        return Response(CandidateNoteSerializer(notes, many=True).data)
+
+    def post(self, request, pk, *args, **kwargs):
+        candidate = self.get_candidate(request, pk)
+        serializer = CandidateNoteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        note = serializer.save(
+            candidate=candidate,
+            organization=candidate.organization,
+            author=request.user,
+        )
+        AuditLog.log(
+            action="candidate.note_created",
+            user=request.user,
+            entity=note,
+            metadata={"candidate_id": str(candidate.id)},
+            ip_address=request.META.get("REMOTE_ADDR"),
+        )
+        return Response(CandidateNoteSerializer(note).data, status=status.HTTP_201_CREATED)
+
+
+class CandidateNoteDetailView(views.APIView):
+    permission_classes = [IsVerifiedRecruiter]
+
+    def get_note(self, request, candidate_id, pk):
+        organization = get_recruiter_organization(request)
+        return generics.get_object_or_404(
+            CandidateNote.objects.filter(
+                pk=pk,
+                candidate_id=candidate_id,
+                organization=organization,
+            )
+        )
+
+    def patch(self, request, candidate_id, pk, *args, **kwargs):
+        note = self.get_note(request, candidate_id, pk)
+        serializer = CandidateNoteSerializer(note, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        note = serializer.save()
+        AuditLog.log(
+            action="candidate.note_updated",
+            user=request.user,
+            entity=note,
+            metadata={"candidate_id": str(note.candidate_id)},
+            ip_address=request.META.get("REMOTE_ADDR"),
+        )
+        return Response(CandidateNoteSerializer(note).data)
+
+    def delete(self, request, candidate_id, pk, *args, **kwargs):
+        note = self.get_note(request, candidate_id, pk)
+        note_id = note.id
+        candidate_id = note.candidate_id
+        note.delete()
+        AuditLog.log(
+            action="candidate.note_deleted",
+            user=request.user,
+            entity=None,
+            metadata={"candidate_id": str(candidate_id), "note_id": str(note_id)},
+            ip_address=request.META.get("REMOTE_ADDR"),
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class ResumeUploadView(views.APIView):
     """
@@ -275,6 +547,20 @@ class ApplicationStatusUpdateView(views.APIView):
             user=request.user,
             entity=application,
             ip_address=request.META.get("REMOTE_ADDR"),
+        )
+
+        notify_recruiters_for_job(
+            application.job,
+            Notification.EventType.CANDIDATE_MOVED,
+            title="Candidate moved",
+            body=f"{application.candidate.full_name} moved to "
+            f"{application.get_status_display()}.",
+            data={
+                "url": f"/dashboard/applications/{application.id}",
+                "application_id": str(application.id),
+                "job_id": str(application.job_id),
+            },
+            actor=request.user,
         )
 
         return Response(

@@ -7,7 +7,14 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Recruiter, User
-from apps.candidates.models import Application, ApplicationHistory, Candidate, ParsedResume, Resume
+from apps.candidates.models import (
+    Application,
+    ApplicationHistory,
+    Candidate,
+    CandidateNote,
+    ParsedResume,
+    Resume,
+)
 from apps.jobs.models import Job
 from apps.organizations.models import Organization
 
@@ -392,6 +399,214 @@ def test_status_update_creates_history_entry(api_client):
 
 
 # ─── Recruiter — Pipeline Board ───────────────────────────────────────────────
+
+def test_recruiter_candidate_list_can_search_by_name_email_or_phone(api_client):
+    recruiter, org = create_recruiter()
+    create_candidate(org, email="athira@example.com")
+    create_candidate(org, email="paru@example.com")
+    Candidate.objects.create(
+        organization=org,
+        first_name="Meera",
+        last_name="Nair",
+        email="meera@example.com",
+        phone="9990001111",
+    )
+    api_client.force_authenticate(user=recruiter)
+
+    name_response = api_client.get(reverse("candidate-list"), {"search": "athira"})
+    email_response = api_client.get(reverse("candidate-list"), {"search": "paru@example.com"})
+    phone_response = api_client.get(reverse("candidate-list"), {"search": "999000"})
+
+    assert name_response.status_code == 200
+    assert [candidate["email"] for candidate in name_response.json()] == ["athira@example.com"]
+    assert [candidate["email"] for candidate in email_response.json()] == ["paru@example.com"]
+    assert [candidate["email"] for candidate in phone_response.json()] == ["meera@example.com"]
+
+
+def test_recruiter_candidate_profile_aggregates_applications_resumes_scores_and_notes(api_client):
+    recruiter, org = create_recruiter()
+    first_job = create_job(org, recruiter)
+    second_job = Job.objects.create(
+        organization=org,
+        created_by=recruiter,
+        title="Frontend Engineer",
+        description="Build UI.",
+        requirements="React.",
+        location="Remote",
+        employment_type=Job.EmploymentType.FULL_TIME,
+        status=Job.Status.PUBLISHED,
+    )
+    candidate = create_candidate(org, email="alice@example.com")
+    first_application = Application.objects.create(
+        candidate=candidate,
+        job=first_job,
+        organization=org,
+        semantic_score="0.92000",
+        skill_score="0.85000",
+        experience_score="0.80000",
+        final_score="0.87000",
+        score_version="hybrid-v1",
+    )
+    ApplicationHistory.objects.create(
+        application=first_application,
+        from_status="",
+        to_status=Application.Status.APPLIED,
+        notes="Application submitted.",
+    )
+    second_application = Application.objects.create(
+        candidate=candidate,
+        job=second_job,
+        organization=org,
+    )
+    resume = Resume.objects.create(
+        candidate=candidate,
+        application=first_application,
+        file_url=f"{org.id}/{candidate.id}/resume.pdf",
+        file_name="resume.pdf",
+        file_size=123,
+        mime_type="application/pdf",
+        status=Resume.Status.PROCESSING,
+        uploaded_by=recruiter,
+    )
+    ParsedResume.objects.create(
+        resume=resume,
+        candidate=candidate,
+        application=first_application,
+        status=ParsedResume.Status.COMPLETED,
+        data={"skills": [{"name": "Python"}], "_metadata": {"total_years_experience": 4}},
+        confidence=ParsedResume.Confidence.HIGH,
+        parser_model="gpt-oss:20b",
+    )
+    CandidateNote.objects.create(
+        candidate=candidate,
+        organization=org,
+        author=recruiter,
+        body="Strong technical screen.",
+    )
+    api_client.force_authenticate(user=recruiter)
+
+    response = api_client.get(reverse("recruiter-candidate-profile", args=[candidate.id]))
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["candidate"]["email"] == "alice@example.com"
+    assert len(data["applications"]) == 2
+    assert {application["id"] for application in data["applications"]} == {
+        str(first_application.id),
+        str(second_application.id),
+    }
+    scored_application = next(
+        application
+        for application in data["applications"]
+        if application["id"] == str(first_application.id)
+    )
+    assert scored_application["final_score"] == "0.87000"
+    assert data["latest_resume"]["parsed_resume"]["confidence"] == ParsedResume.Confidence.HIGH
+    assert data["parsed_resume"]["parser_model"] == "gpt-oss:20b"
+    assert data["notes"][0]["body"] == "Strong technical screen."
+    assert {entry["type"] for entry in data["activity"]} >= {
+        "application_submitted",
+        "status_change",
+        "resume_uploaded",
+        "resume_parsed",
+    }
+
+
+def test_recruiter_candidate_profile_rejects_other_organization(api_client):
+    _recruiter_a, org_a = create_recruiter("a@example.com")
+    recruiter_b, _org_b = create_recruiter("b@example.com")
+    candidate = create_candidate(org_a, email="alice@example.com")
+
+    api_client.force_authenticate(user=recruiter_b)
+
+    response = api_client.get(reverse("recruiter-candidate-profile", args=[candidate.id]))
+
+    assert response.status_code == 404
+
+
+def test_recruiter_candidate_profile_handles_missing_parsed_resume(api_client):
+    recruiter, org = create_recruiter()
+    job = create_job(org, recruiter)
+    application = create_application(org, job)
+    Resume.objects.create(
+        candidate=application.candidate,
+        application=application,
+        file_url=f"{org.id}/{application.candidate_id}/resume.pdf",
+        file_name="resume.pdf",
+        file_size=123,
+        mime_type="application/pdf",
+        status=Resume.Status.PENDING,
+    )
+    api_client.force_authenticate(user=recruiter)
+
+    response = api_client.get(
+        reverse("recruiter-candidate-profile", args=[application.candidate_id])
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["parsed_resume"] is None
+    assert data["latest_resume"]["parsed_resume"] is None
+
+
+def test_recruiter_can_create_update_and_delete_candidate_notes(api_client):
+    recruiter, org = create_recruiter()
+    candidate = create_candidate(org, email="alice@example.com")
+    api_client.force_authenticate(user=recruiter)
+
+    create_response = api_client.post(
+        reverse("candidate-note-list", args=[candidate.id]),
+        {"body": "Initial note."},
+        format="json",
+    )
+
+    assert create_response.status_code == 201
+    note_id = create_response.json()["id"]
+    note = CandidateNote.objects.get(id=note_id)
+    assert note.organization == org
+    assert note.author == recruiter
+
+    list_response = api_client.get(reverse("candidate-note-list", args=[candidate.id]))
+    assert list_response.status_code == 200
+    assert list_response.json()[0]["body"] == "Initial note."
+
+    update_response = api_client.patch(
+        reverse("candidate-note-detail", args=[candidate.id, note_id]),
+        {"body": "Updated note."},
+        format="json",
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["body"] == "Updated note."
+
+    delete_response = api_client.delete(
+        reverse("candidate-note-detail", args=[candidate.id, note_id])
+    )
+    assert delete_response.status_code == 204
+    assert not CandidateNote.objects.filter(id=note_id).exists()
+
+
+def test_recruiter_candidate_notes_enforce_organization_isolation(api_client):
+    recruiter_a, org_a = create_recruiter("a@example.com")
+    recruiter_b, _org_b = create_recruiter("b@example.com")
+    candidate = create_candidate(org_a, email="alice@example.com")
+    note = CandidateNote.objects.create(
+        candidate=candidate,
+        organization=org_a,
+        author=recruiter_a,
+        body="Private note.",
+    )
+    api_client.force_authenticate(user=recruiter_b)
+
+    list_response = api_client.get(reverse("candidate-note-list", args=[candidate.id]))
+    detail_response = api_client.patch(
+        reverse("candidate-note-detail", args=[candidate.id, note.id]),
+        {"body": "Cross-org edit."},
+        format="json",
+    )
+
+    assert list_response.status_code == 404
+    assert detail_response.status_code == 404
+
 
 def test_pipeline_board_groups_by_status(api_client):
     recruiter, org = create_recruiter()

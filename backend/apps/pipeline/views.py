@@ -7,6 +7,8 @@ from apps.candidates.models import Application
 from apps.candidates.serializers import ApplicationSerializer
 from apps.core.models import AuditLog
 from apps.jobs.models import Job
+from apps.notifications.models import Notification
+from apps.notifications.services import notify_recruiters_for_job
 
 from .models import PipelineStage
 from .serializers import (
@@ -227,5 +229,17 @@ class PipelineMoveView(views.APIView):
             user=request.user,
             entity=application,
             ip_address=request.META.get("REMOTE_ADDR"),
+        )
+        notify_recruiters_for_job(
+            application.job,
+            Notification.EventType.CANDIDATE_MOVED,
+            title="Candidate moved",
+            body=f"{application.candidate.full_name} moved to {stage.name}.",
+            data={
+                "url": f"/dashboard/applications/{application.id}",
+                "application_id": str(application.id),
+                "job_id": str(application.job_id),
+            },
+            actor=request.user,
         )
         return Response(ApplicationSerializer(application).data)

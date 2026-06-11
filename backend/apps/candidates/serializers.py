@@ -4,7 +4,7 @@ from rest_framework import serializers
 
 from apps.jobs.models import Job
 
-from .models import Application, ApplicationHistory, Candidate, ParsedResume, Resume
+from .models import Application, ApplicationHistory, Candidate, CandidateNote, ParsedResume, Resume
 
 
 class ParsedResumeSerializer(serializers.ModelSerializer):
@@ -137,6 +137,22 @@ class CandidateSerializer(serializers.ModelSerializer):
             "created_at",
         )
         read_only_fields = ("id", "created_at", "resumes")
+
+
+class CandidateNoteSerializer(serializers.ModelSerializer):
+    author_email = serializers.EmailField(source="author.email", read_only=True, default=None)
+
+    class Meta:
+        model = CandidateNote
+        fields = (
+            "id",
+            "candidate",
+            "author_email",
+            "body",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "candidate", "author_email", "created_at", "updated_at")
 
 
 class ApplicationHistorySerializer(serializers.ModelSerializer):

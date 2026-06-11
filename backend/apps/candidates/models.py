@@ -173,6 +173,38 @@ class ParsedResume(models.Model):
         return f"Parsed resume for {self.candidate}"
 
 
+class CandidateNote(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    candidate = models.ForeignKey(
+        Candidate,
+        on_delete=models.CASCADE,
+        related_name="notes",
+    )
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="candidate_notes",
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="candidate_notes",
+    )
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["organization", "candidate", "created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"Note for {self.candidate} by {self.author_id or 'system'}"
+
 
 class Application(models.Model):
     class Status(models.TextChoices):
