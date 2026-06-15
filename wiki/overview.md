@@ -2,7 +2,7 @@
 type: overview
 title: "AI Recruitment SaaS — Knowledge Base Overview"
 date_created: 2025-05-22
-date_updated: 2026-06-11
+date_updated: 2026-06-15
 source_count: 1
 tags: [product/strategy, market/trend, ai/llm]
 ---
@@ -86,6 +86,10 @@ The product now has a filed UI/UX foundation: [[Lumina Nexus UI UX Foundation]].
 - Sprint 10 core is implemented: [[Sprint 10 Candidate Dashboard Plan]] delivers the recruiter-facing candidate profile dashboard, notes, activity feed, and score/resume tabs; the optional AI summary workflow remains deferred.
 - Sprint 11 core is complete: [[Sprint 11 Semantic Search Implementation]] delivers recruiter semantic search across candidates and jobs with deterministic hybrid relevance, filters, cached APIs, duplicate-safe candidate results, normalized keyword matching, and a dashboard search page.
 - Sprint 12 core is implemented: [[Sprint 12 AI Interview Assistance Plan]] delivers application-scoped interview question generation, schema validation, question-bank fallback, recruiter notes, and an Interview Prep panel while keeping AI out of scoring and hiring recommendations.
+- Sprint 14 is implemented: [[Sprint 14 Analytics Implementation]] delivers overview KPIs, funnel, time-to-hire, source effectiveness, team activity, snapshots, caching, CSV export, and chart export.
+- Sprint 15 is implemented: [[Sprint 15 Bulk Operations Implementation]] adds bulk resume upload, batch scoring, bulk pipeline actions, per-item error reporting/retry, and WebSocket progress with polling fallback.
+- Sprint 16 is implemented: [[Sprint 16 Security Hardening Implementation]] adds throttling, login lockout, CSRF support, security headers, upload content validation, sanitization, and dependency/secret checks.
+- Sprint 17 is implemented: [[Sprint 17 Performance Optimization Implementation]] adds versioned cache invalidation, cached job/search/analytics paths, query prefetching, compression, performance indexes, and analytics chart code splitting.
 - The current development LLM provider is [[LLM Provider Architecture|Ollama Cloud]] using `gpt-oss:20b`; local Ollama is installed but has no local models yet, so `qwen2.5-coder:7b` remains a future local option.
 
 Open strategic decisions remain: target segment, pricing model, integration strategy, and the first agentic workflow to automate.

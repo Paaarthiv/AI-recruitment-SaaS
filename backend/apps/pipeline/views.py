@@ -71,6 +71,7 @@ class JobPipelineBoardView(views.APIView):
         applications = (
             Application.objects.filter(organization=organization, job=job)
             .select_related("candidate", "job", "organization", "current_stage")
+            .prefetch_related("candidate__resumes")
             .order_by("-applied_at")
         )
         return Response(build_job_pipeline_board(job, applications))

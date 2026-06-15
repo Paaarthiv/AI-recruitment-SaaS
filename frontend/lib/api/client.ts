@@ -35,6 +35,7 @@ function getApiBaseUrl() {
 }
 
 const apiBaseUrl = getApiBaseUrl();
+const csrfEndpoint = "/api/v1/auth/csrf/";
 const refreshEndpoint = "/api/v1/auth/refresh/";
 
 type RetryableRequestConfig = InternalAxiosRequestConfig & {
@@ -77,6 +78,36 @@ function shouldBypassRefresh(url: string | undefined) {
 export const apiClient = axios.create({
   baseURL: apiBaseUrl,
   withCredentials: true,
+});
+
+function getCookie(name: string) {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function isUnsafeMethod(method: string | undefined) {
+  return !["GET", "HEAD", "OPTIONS", "TRACE"].includes((method ?? "GET").toUpperCase());
+}
+
+apiClient.interceptors.request.use(async (config) => {
+  if (!isUnsafeMethod(config.method) || config.url === csrfEndpoint) {
+    return config;
+  }
+
+  let csrfToken = getCookie("csrftoken");
+  if (!csrfToken && typeof window !== "undefined") {
+    const response = await axios.get<{ csrfToken: string }>(`${apiBaseUrl}${csrfEndpoint}`, {
+      withCredentials: true,
+    });
+    csrfToken = response.data.csrfToken || getCookie("csrftoken");
+  }
+
+  if (csrfToken) {
+    config.headers.set("X-CSRFToken", csrfToken);
+  }
+
+  return config;
 });
 
 apiClient.interceptors.response.use(

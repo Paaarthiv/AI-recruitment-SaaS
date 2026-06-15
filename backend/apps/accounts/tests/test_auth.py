@@ -74,6 +74,14 @@ def test_registration_creates_user_organization_and_recruiter_profile(api_client
     assert recruiter.organization.name == "Nexus Talent"
 
 
+def test_csrf_endpoint_issues_token(api_client):
+    response = api_client.get(reverse("auth-csrf"), format="json")
+
+    assert response.status_code == 200
+    assert response.json()["csrfToken"]
+    assert "csrftoken" in response.cookies
+
+
 def test_registration_rejects_duplicate_email(api_client):
     User.objects.create_user(email="asha@example.com", password="StrongPass123!")
 
@@ -184,3 +192,24 @@ def test_login_rate_limit_returns_too_many_requests(api_client):
     ]
 
     assert responses[-1].status_code == 429
+
+
+def test_failed_login_lockout_uses_cache(api_client, settings):
+    settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["auth_login"] = "100/min"
+    settings.AUTH_FAILED_LOGIN_LIMIT = 2
+    settings.AUTH_LOCKOUT_SECONDS = 60
+    create_recruiter()
+    payload = {"email": "recruiter@example.com", "password": "WrongPass123!"}
+
+    first = api_client.post(reverse("auth-login"), payload, format="json")
+    second = api_client.post(reverse("auth-login"), payload, format="json")
+    locked = api_client.post(
+        reverse("auth-login"),
+        {"email": "recruiter@example.com", "password": "StrongPass123!"},
+        format="json",
+    )
+
+    assert first.status_code == 401
+    assert second.status_code == 401
+    assert locked.status_code == 401
+    assert locked.json()["detail"] == "Too many failed login attempts. Please try again later."

@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from apps.core.security import sanitize_text
+
 from .models import InterviewQuestion, InterviewQuestionNote, InterviewQuestionSet, QuestionBankItem
 
 
@@ -67,11 +69,23 @@ class InterviewQuestionUpdateSerializer(serializers.ModelSerializer):
         model = InterviewQuestion
         fields = ("question_text", "rationale", "evaluation_criteria", "order", "is_pinned")
 
+    def validate_question_text(self, value):
+        return sanitize_text(value)
+
+    def validate_rationale(self, value):
+        return sanitize_text(value)
+
+    def validate_evaluation_criteria(self, value):
+        return sanitize_text(value)
+
 
 class InterviewQuestionNoteCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = InterviewQuestionNote
         fields = ("body",)
+
+    def validate_body(self, value):
+        return sanitize_text(value)
 
 
 class QuestionBankItemSerializer(serializers.ModelSerializer):
@@ -91,3 +105,12 @@ class QuestionBankItemSerializer(serializers.ModelSerializer):
             "updated_at",
         )
         read_only_fields = ("id", "category_label", "created_at", "updated_at")
+
+    def validate_role_family(self, value):
+        return sanitize_text(value)
+
+    def validate_question_text(self, value):
+        return sanitize_text(value)
+
+    def validate_evaluation_criteria(self, value):
+        return sanitize_text(value)

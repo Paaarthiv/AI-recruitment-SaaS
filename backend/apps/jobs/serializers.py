@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from apps.core.security import sanitize_text
+
 from .models import Job
 
 
@@ -52,6 +54,24 @@ class JobSerializer(serializers.ModelSerializer):
         if status == Job.Status.PUBLISHED:
             self._validate_publishable(attrs)
         return attrs
+
+    def validate_title(self, value):
+        return sanitize_text(value)
+
+    def validate_description(self, value):
+        return sanitize_text(value)
+
+    def validate_requirements(self, value):
+        return sanitize_text(value)
+
+    def validate_location(self, value):
+        return sanitize_text(value)
+
+    def validate_department(self, value):
+        return sanitize_text(value)
+
+    def validate_salary_range(self, value):
+        return sanitize_text(value)
 
     def get_application_count(self, obj) -> int:
         annotated_count = getattr(obj, "application_count", None)

@@ -367,6 +367,7 @@ class ResumeUploadView(views.APIView):
     """
     permission_classes = [IsVerifiedRecruiter]
     parser_classes = [MultiPartParser, FormParser]
+    throttle_scope = "upload"
 
     def post(self, request, *args, **kwargs):
         serializer = ResumeUploadSerializer(data=request.data)
@@ -467,7 +468,8 @@ class ApplicationListView(generics.ListAPIView):
         organization = get_recruiter_organization(self.request)
         queryset = (
             Application.objects.filter(organization=organization)
-            .select_related("candidate", "job", "organization")
+            .select_related("candidate", "job", "organization", "current_stage")
+            .prefetch_related("candidate__resumes")
             .order_by("-applied_at")
         )
 
@@ -490,8 +492,8 @@ class ApplicationDetailView(generics.RetrieveAPIView):
         organization = get_recruiter_organization(self.request)
         return (
             Application.objects.filter(organization=organization)
-            .select_related("candidate", "job", "organization")
-            .prefetch_related("history__changed_by", "resumes")
+            .select_related("candidate", "job", "organization", "current_stage")
+            .prefetch_related("history__changed_by", "resumes", "candidate__resumes")
         )
 
     def get_serializer_context(self):
@@ -704,6 +706,7 @@ class PipelineBoardView(views.APIView):
         queryset = (
             Application.objects.filter(organization=organization)
             .select_related("candidate", "job", "organization", "current_stage")
+            .prefetch_related("candidate__resumes")
             .order_by("-applied_at")
         )
 

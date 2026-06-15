@@ -183,6 +183,31 @@ def test_candidate_uploads_resume_linked_to_application(api_client):
     task.delay.assert_called_once_with(str(resume.id))
 
 
+def test_candidate_resume_upload_rejects_spoofed_pdf(api_client):
+    recruiter, org = create_recruiter()
+    job = create_job(org, recruiter)
+    application = create_application(org, job, email="alice@example.com")
+
+    candidate_user = create_candidate_user("alice@example.com")
+    api_client.force_authenticate(user=candidate_user)
+
+    response = api_client.post(
+        reverse("candidate-resume-upload"),
+        {
+            "application_id": str(application.id),
+            "file": SimpleUploadedFile(
+                "resume.pdf",
+                b"this is not a real pdf",
+                content_type="application/pdf",
+            ),
+        },
+        format="multipart",
+    )
+
+    assert response.status_code == 400
+    assert "file" in response.json()
+
+
 def test_candidate_resume_upload_rejects_other_candidate_application(api_client):
     recruiter, org = create_recruiter()
     job = create_job(org, recruiter)

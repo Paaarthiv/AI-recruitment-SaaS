@@ -16,6 +16,8 @@ urlpatterns = [
     path("api/v1/applications/", include("apps.candidates.urls")),
     path("api/v1/pipeline/", include("apps.pipeline.urls")),
     path("api/v1/notifications/", include("apps.notifications.urls")),
+    path("api/v1/analytics/", include("apps.analytics.urls")),
+    path("api/v1/batch/", include("apps.batch.urls")),
     path("api/v1/resumes/<uuid:pk>/view/", ResumeViewFileView.as_view(), name="resume-view"),
     path(
         "api/v1/resumes/<uuid:pk>/download/",

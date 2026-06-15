@@ -32,6 +32,7 @@ ALLOWED_HOSTS = [
 ]
 
 INSTALLED_APPS = [
+    "daphne",
     # Django built-ins
     "django.contrib.admin",
     "django.contrib.auth",
@@ -44,6 +45,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
+    "channels",
     "pgvector.django",
     # Internal apps
     "apps.accounts",
@@ -56,10 +58,13 @@ INSTALLED_APPS = [
     "apps.interviews",
     "apps.analytics",
     "apps.notifications",
+    "apps.batch",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "apps.core.middleware.SecurityHeadersMiddleware",
+    "django.middleware.gzip.GZipMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -68,6 +73,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "apps.core.middleware.ApiSecurityAuditMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -121,6 +127,24 @@ MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ---------------------------------------------------------------------------
+# Cache / rate limiting
+# ---------------------------------------------------------------------------
+CACHE_URL = os.getenv("CACHE_URL", "")
+CACHES = {
+    "default": (
+        {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": CACHE_URL,
+        }
+        if CACHE_URL
+        else {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "recruitai-default",
+        }
+    )
+}
+
+# ---------------------------------------------------------------------------
 # Django REST Framework
 # ---------------------------------------------------------------------------
 REST_FRAMEWORK = {
@@ -131,12 +155,18 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ],
     "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
         "rest_framework.throttling.ScopedRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
+        "anon": os.getenv("API_ANON_RATE", "100/min"),
+        "user": os.getenv("API_USER_RATE", "100/min"),
         "auth_register": os.getenv("AUTH_REGISTER_RATE", "5/min"),
         "auth_login": os.getenv("AUTH_LOGIN_RATE", "5/min"),
         "auth_refresh": os.getenv("AUTH_REFRESH_RATE", "20/min"),
+        "upload": os.getenv("UPLOAD_RATE", "10/min"),
+        "search": os.getenv("SEARCH_RATE", "30/min"),
     },
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
@@ -190,12 +220,40 @@ CORS_ALLOWED_ORIGINS = [
 CORS_ALLOW_CREDENTIALS = True
 
 # ---------------------------------------------------------------------------
+# Browser security
+# ---------------------------------------------------------------------------
+CSRF_COOKIE_NAME = "csrftoken"
+CSRF_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_HTTPONLY = False
+SESSION_COOKIE_SAMESITE = "Lax"
+ENFORCE_CSRF_ON_COOKIE_AUTH = os.getenv(
+    "ENFORCE_CSRF_ON_COOKIE_AUTH",
+    "false" if DEBUG else "true",
+).lower() in {"1", "true", "yes", "on"}
+AUTH_FAILED_LOGIN_LIMIT = int(os.getenv("AUTH_FAILED_LOGIN_LIMIT", "10"))
+AUTH_LOCKOUT_SECONDS = int(os.getenv("AUTH_LOCKOUT_SECONDS", "900"))
+CONTENT_SECURITY_POLICY = os.getenv(
+    "CONTENT_SECURITY_POLICY",
+    "default-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+)
+
+# ---------------------------------------------------------------------------
 # Redis / Celery
 # ---------------------------------------------------------------------------
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/1")
 CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/2")
 CELERY_TASK_DEFAULT_QUEUE = "default"
+BATCH_MAX_ACTIVE_PER_ORG = int(os.getenv("BATCH_MAX_ACTIVE_PER_ORG", "3"))
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [REDIS_URL],
+        },
+    }
+}
 
 # ---------------------------------------------------------------------------
 # AI / Ollama — settings only. No implementation in Sprint 1.

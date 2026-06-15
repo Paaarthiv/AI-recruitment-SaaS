@@ -11,6 +11,7 @@ import {
   GitBranch,
   LayoutDashboard,
   LogOut,
+  ListChecks,
   Search,
   Users,
   Zap,
@@ -25,7 +26,8 @@ const NAV_ITEMS = [
   { name: "Pipeline", href: "/dashboard/pipeline", active: true, icon: GitBranch },
   { name: "Candidates", href: "/dashboard/candidates", active: true, icon: Users },
   { name: "Search", href: "/dashboard/search", active: true, icon: Search },
-  { name: "Analytics", href: "/analytics", active: false, icon: BarChart3 },
+  { name: "Analytics", href: "/dashboard/analytics", active: true, icon: BarChart3 },
+  { name: "Batch", href: "/dashboard/batch", active: true, icon: ListChecks },
 ];
 
 export default function DashboardLayout({

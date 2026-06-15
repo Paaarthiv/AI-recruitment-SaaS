@@ -1,6 +1,13 @@
 export type EmploymentType = "full_time" | "part_time" | "contract" | "internship";
 export type JobStatus = "draft" | "published" | "closed" | "archived";
 export type RemotePolicy = "onsite" | "hybrid" | "remote";
+export type ApplicationSource =
+  | "direct"
+  | "job_board"
+  | "linkedin"
+  | "referral"
+  | "agency"
+  | "other";
 export type ApplicationStatus =
   | "applied"
   | "under_review"
@@ -90,6 +97,7 @@ export interface Application extends ApplicationScoreFields {
   organization: string;
   organization_name?: string;
   status: ApplicationStatus;
+  source?: ApplicationSource;
   current_stage?: import("./candidate").PipelineStage | null;
   applied_at: string;
   updated_at: string;
@@ -141,4 +149,5 @@ export interface ApplicationPayload {
   phone: string;
   linkedin_url: string;
   github_url: string;
+  source?: ApplicationSource;
 }

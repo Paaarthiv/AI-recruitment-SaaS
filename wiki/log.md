@@ -334,3 +334,79 @@ Verification: migration applied; full backend suite green incl. 8 new notificati
 
 **Files touched:** new `backend/apps/notifications/*`; `backend/config/settings/base.py`, `backend/config/urls.py`; triggers in `apps/candidates/views.py`, `apps/jobs/views.py`, `apps/pipeline/views.py`; `frontend/components/NotificationBell.tsx`, `frontend/lib/notifications.ts`, `frontend/types/notifications.ts`, `frontend/app/(dashboard)/layout.tsx`, `frontend/app/(dashboard)/dashboard/settings/notifications/page.tsx`
 **Pages touched:** [[Sprint 13 Notifications Implementation]], [[index|Wiki Index]], [[log|Activity Log]]
+
+---
+
+## [2026-06-11 20:05] feature | Sprint 14A — Analytics Dashboard (core)
+
+Built Sprint 14 Phase 14A: a recruitment analytics dashboard computed on-demand from existing data — no new models. Phased per decision (core now; caching/snapshots, export, leaderboard, sparklines deferred to 14B; source-effectiveness deferred until a source field + intake capture exist).
+
+Backend `apps.analytics` (was empty scaffolding): `services.py` with funnel (max-rank-ever-reached over ApplicationHistory, so a candidate rejected after an interview still counts as interviewed; conversion = bucket/prior), time-to-hire (avg + median from the hired transition timestamp), and overview KPIs — hires/offers derived from the funnel so KPI cards and the chart never disagree. Endpoints `GET /api/v1/analytics/{overview,funnel,time-to-hire}/`, org-scoped, with `?start=&end=` date filtering. Frontend: added recharts; `/dashboard/analytics` with KPI cards, funnel + time-to-hire charts, and 7/30/90/all presets; enabled the Analytics nav item.
+
+Verification: no migration needed; full backend suite **97 passed** (+6 analytics tests); frontend type-check/lint/build pass; live smoke confirmed funnel/overview consistency on real data.
+
+**Files touched:** `backend/apps/analytics/{services,views,urls,tests}.py`, `backend/config/urls.py`; `frontend/types/analytics.ts`, `frontend/lib/analytics.ts`, `frontend/app/(dashboard)/dashboard/analytics/page.tsx`, `frontend/app/(dashboard)/layout.tsx`, `frontend/package.json`
+**Pages touched:** [[Sprint 14 Analytics Implementation]], [[index|Wiki Index]], [[log|Activity Log]]
+
+---
+
+## [2026-06-12 03:35] feature | Sprint 14B - Analytics Completion
+
+Completed Sprint 14B on top of the existing 14A analytics dashboard. Backend analytics now include short-lived cached metric helpers, daily JSON snapshot storage, a Celery snapshot task, source effectiveness, team activity leaderboard metrics, bundled dashboard payloads, and CSV exports. Application intake now stores `Application.source`, defaulting to direct while allowing public job links to pass a source value through the query string.
+
+Frontend analytics now load the bundled dashboard endpoint and show KPI trend badges, small sparklines, source effectiveness chart/table, team activity table, CSV export actions, and PNG chart export actions.
+
+Validation: backend Ruff passed, Django system check passed, migration drift check passed, focused analytics/jobs API tests passed (22), frontend lint passed, frontend type-check passed, and production build passed.
+
+**Files touched:** `backend/apps/analytics/{models,services,views,urls,tasks,tests}.py`, `backend/apps/analytics/migrations/0001_initial.py`, `backend/apps/candidates/{models,serializers}.py`, `backend/apps/candidates/migrations/0011_application_source.py`, `backend/apps/jobs/tests/test_jobs_api.py`, `frontend/types/{analytics,jobs}.ts`, `frontend/lib/analytics.ts`, `frontend/app/(dashboard)/dashboard/analytics/page.tsx`, `frontend/app/(public)/jobs/[slug]/page.tsx`
+**Pages touched:** [[Sprint 14 Analytics Implementation]], [[index|Wiki Index]], [[log|Activity Log]]
+
+---
+
+## [2026-06-14 15:10] feature | Sprint 15 Bulk Operations
+
+Implemented Sprint 15 core: new `apps.batch` backend with `BatchJob`/`BatchItem`, bulk resume upload, batch scoring, bulk pipeline actions, per-item errors/retry, REST progress endpoints, and Django Channels WebSocket progress authenticated by the existing access cookie. Frontend now includes batch history, bulk upload, live progress/error report pages, and multi-select bulk actions on the recruiter Applications page.
+
+Verification during implementation: backend batch tests pass, Django system check passes, Ruff passes for the new backend code, frontend type-check passes, and frontend lint passes. Final full validation is run after this log entry.
+
+**Files touched:** `backend/apps/batch/*`, `backend/config/{asgi,urls}.py`, `backend/config/settings/base.py`, `backend/requirements.txt`, `frontend/types/batch.ts`, `frontend/lib/batch.ts`, `frontend/hooks/use-batch-progress.ts`, `frontend/components/BatchProgressPanel.tsx`, `frontend/app/(dashboard)/dashboard/batch/*`, `frontend/app/(dashboard)/dashboard/applications/page.tsx`, `frontend/app/(dashboard)/layout.tsx`
+**Pages touched:** [[Sprint 15 Bulk Operations Implementation]], [[index|Wiki Index]], [[overview|Overview]], [[log|Activity Log]]
+
+---
+
+## [2026-06-15 10:30] feature | Sprint 15B Batch Hardening
+
+Implemented the deferred Sprint 15B hardening layer: cooperative batch cancellation, per-organization active batch limits, scheduled score/pipeline batch operations, scheduled-operation APIs, cancel controls in the progress UI, scheduled scoring controls on the batch history page, and a non-eager Celery chord fan-in path for per-item processing with a finalize callback.
+
+Known operational limitation: cancellation is cooperative and stops between items; it does not kill a parser/LLM call already in progress. Production recurring execution requires a periodic Celery beat entry for `process_due_scheduled_batches`.
+
+Validation: focused batch tests pass, backend Ruff passes for batch/config, frontend type-check passes, and frontend lint passes.
+
+**Files touched:** `backend/apps/batch/{models,services,tasks,views,urls,serializers,admin,tests}.py`, `backend/apps/batch/migrations/0002_alter_batchjob_status_scheduledbatchoperation.py`, `backend/config/settings/base.py`, `frontend/types/batch.ts`, `frontend/lib/batch.ts`, `frontend/hooks/use-batch-progress.ts`, `frontend/components/BatchProgressPanel.tsx`, `frontend/app/(dashboard)/dashboard/batch/*`
+**Pages touched:** [[Sprint 15 Bulk Operations Implementation]], [[log|Activity Log]]
+
+---
+
+## [2026-06-15 11:55] feature | Sprint 16 Security Hardening
+
+Implemented Sprint 16 hardening across authentication, uploads, request throttling, headers, sanitization, and dependencies. Backend now has cache-backed anonymous/user/scoped throttles, login-failure lockout, optional CSRF enforcement for cookie JWT unsafe requests, a CSRF token endpoint, security headers, shared resume content validation, and HTML-stripping sanitization on editable text fields. Frontend now attaches `X-CSRFToken` automatically and serves baseline security headers.
+
+Dependency audit remediation upgraded Django, SimpleJWT, PyJWT, pdfplumber/pdfminer, pytest, and added bleach. `npm audit` found no frontend vulnerabilities. Secret-pattern scanning found no leaked token matches in scanned project files. `pip-audit` has one residual upstream/no-fix advisory for `torch` via `sentence-transformers`.
+
+Validation: backend Ruff passed, Django system check passed, migration drift check passed, full backend suite passed (113 tests), frontend lint/type-check/build passed, and npm audit passed.
+
+**Files touched:** `backend/apps/core/{security,middleware}.py`, `backend/apps/accounts/{authentication,serializers,views,urls}.py`, `backend/apps/candidates/{serializers,views,candidate_views}.py`, `backend/apps/batch/services.py`, `backend/apps/jobs/{serializers,views}.py`, `backend/apps/ai_engine/views.py`, `backend/apps/interviews/serializers.py`, `backend/config/settings/{base,prod}.py`, `backend/requirements.txt`, `frontend/lib/api/client.ts`, `frontend/next.config.mjs`
+**Pages touched:** [[Sprint 16 Security Hardening Implementation]], [[index|Wiki Index]], [[overview|Overview]], [[log|Activity Log]]
+
+---
+
+## [2026-06-15 12:55] feature | Sprint 17 Performance Optimization
+
+Implemented Sprint 17 performance optimization. Backend now has organization-scoped cache-version helpers, cache invalidation signals, versioned analytics/search cache keys, cached recruiter/public job lists, gzip compression, optimized cookie-JWT user/profile/org loading, tighter select/prefetch coverage on application and pipeline list paths, bounded search ranking scans, and additional composite indexes for common filters and analytics queries. Frontend analytics now dynamically loads Recharts primitives instead of eagerly bundling them into the page module.
+
+Validation: backend Ruff passed, Django system check passed, migration drift check passed, focused jobs/search/analytics tests passed, full backend suite passed (114 tests), frontend lint/type-check/build passed, and new index migrations were applied locally.
+
+Deferred: production load testing scripts, P95/P99 monitoring, CDN configuration, production PostgreSQL tuning, and full virtual scrolling for every large list remain environment/scale follow-ups.
+
+**Files touched:** `backend/apps/core/{cache,signals,apps}.py`, `backend/apps/accounts/authentication.py`, `backend/apps/analytics/services.py`, `backend/apps/ai_engine/{views,search}.py`, `backend/apps/candidates/{models,serializers,views}.py`, `backend/apps/candidates/migrations/0012_application_candidates__organiz_58eb83_idx_and_more.py`, `backend/apps/jobs/{models,views}.py`, `backend/apps/jobs/migrations/0004_job_jobs_job_organiz_b88770_idx_and_more.py`, `backend/apps/jobs/tests/test_jobs_api.py`, `backend/apps/pipeline/views.py`, `backend/config/settings/base.py`, `frontend/app/(dashboard)/dashboard/analytics/page.tsx`
+**Pages touched:** [[Sprint 17 Performance Optimization Implementation]], [[index|Wiki Index]], [[overview|Overview]], [[log|Activity Log]]

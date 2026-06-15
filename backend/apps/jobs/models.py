@@ -76,7 +76,9 @@ class Job(models.Model):
         indexes = [
             models.Index(fields=["organization", "status"]),
             models.Index(fields=["organization", "created_at"]),
+            models.Index(fields=["organization", "status", "created_at"]),
             models.Index(fields=["organization", "department"]),
+            models.Index(fields=["status", "published_at"]),
             HnswIndex(
                 fields=["embedding"],
                 name="jobs_job_embedding_hnsw",

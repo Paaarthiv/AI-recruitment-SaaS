@@ -7,7 +7,16 @@ import { FileText, Send, UploadCloud, X } from "lucide-react";
 
 import { getApiErrorMessage } from "@/lib/api";
 import { applyToJob, getPublicJob } from "@/lib/jobs";
-import type { ApplicationPayload, PublicJob } from "@/types/jobs";
+import type { ApplicationPayload, ApplicationSource, PublicJob } from "@/types/jobs";
+
+const APPLICATION_SOURCES = new Set<ApplicationSource>([
+  "direct",
+  "job_board",
+  "linkedin",
+  "referral",
+  "agency",
+  "other",
+]);
 
 const initialForm: ApplicationPayload = {
   first_name: "",
@@ -20,6 +29,13 @@ const initialForm: ApplicationPayload = {
 
 function employmentLabel(value: string) {
   return value.replace("_", " ");
+}
+
+function sourceFromQuery(value: string | null): ApplicationSource | undefined {
+  if (!value) return undefined;
+  return APPLICATION_SOURCES.has(value as ApplicationSource)
+    ? (value as ApplicationSource)
+    : undefined;
 }
 
 export default function PublicJobDetailPage() {
@@ -93,7 +109,14 @@ export default function PublicJobDetailPage() {
     setIsSubmitting(true);
     setError(null);
     try {
-      await applyToJob(job.id, form, resumeFile);
+      await applyToJob(
+        job.id,
+        {
+          ...form,
+          source: sourceFromQuery(new URLSearchParams(window.location.search).get("source")),
+        },
+        resumeFile,
+      );
       setSuccess(true);
       setForm(initialForm);
       clearResume();

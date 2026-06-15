@@ -33,6 +33,8 @@ class Candidate(models.Model):
         ]
         indexes = [
             models.Index(fields=["organization", "email"]),
+            models.Index(fields=["organization", "last_name", "first_name"]),
+            models.Index(fields=["organization", "created_at"]),
         ]
 
     def __str__(self) -> str:
@@ -94,6 +96,7 @@ class Resume(models.Model):
         indexes = [
             models.Index(fields=["candidate"]),
             models.Index(fields=["file_hash"]),
+            models.Index(fields=["application", "file_hash"]),
         ]
 
     def __str__(self) -> str:
@@ -217,6 +220,14 @@ class Application(models.Model):
         REJECTED = "rejected", "Rejected"
         HIRED = "hired", "Hired"
 
+    class Source(models.TextChoices):
+        DIRECT = "direct", "Direct"
+        JOB_BOARD = "job_board", "Job Board"
+        LINKEDIN = "linkedin", "LinkedIn"
+        REFERRAL = "referral", "Referral"
+        AGENCY = "agency", "Agency"
+        OTHER = "other", "Other"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     candidate = models.ForeignKey(
         Candidate,
@@ -238,6 +249,13 @@ class Application(models.Model):
         choices=Status.choices,
         default=Status.APPLIED,
         db_index=True,
+    )
+    source = models.CharField(
+        max_length=20,
+        choices=Source.choices,
+        default=Source.DIRECT,
+        db_index=True,
+        help_text="Where the application originated (for source-effectiveness analytics).",
     )
     current_stage = models.ForeignKey(
         "pipeline.PipelineStage",
@@ -291,7 +309,9 @@ class Application(models.Model):
         indexes = [
             models.Index(fields=["organization", "job"]),
             models.Index(fields=["organization", "status"]),
+            models.Index(fields=["organization", "source"]),
             models.Index(fields=["organization", "current_stage"]),
+            models.Index(fields=["organization", "job", "status", "applied_at"]),
             models.Index(
                 fields=["organization", "job", "final_score"],
                 name="applications_job_score_idx",
@@ -386,6 +406,11 @@ class ApplicationHistory(models.Model):
 
     class Meta:
         ordering = ["changed_at"]
+        indexes = [
+            models.Index(fields=["application", "changed_at"]),
+            models.Index(fields=["changed_by", "changed_at"]),
+            models.Index(fields=["to_status", "changed_at"]),
+        ]
 
     def __str__(self) -> str:
         return f"{self.application_id}: {self.from_status} -> {self.to_status}"

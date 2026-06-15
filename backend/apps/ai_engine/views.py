@@ -5,12 +5,14 @@ from rest_framework.views import APIView
 
 from apps.accounts.permissions import IsVerifiedRecruiter
 from apps.candidates.views import get_recruiter_organization
+from apps.core.cache import org_cache_key
 
 from .search import SearchService, build_search_filters
 
 
 class SearchBaseView(APIView):
     permission_classes = [IsVerifiedRecruiter]
+    throttle_scope = "search"
     search_type = "all"
 
     def get(self, request, *args, **kwargs):
@@ -35,7 +37,7 @@ class SearchBaseView(APIView):
         return Response(payload)
 
     def _cache_key(self, organization_id, encoded_params: str) -> str:
-        return f"search:{self.search_type}:{organization_id}:{encoded_params}"
+        return org_cache_key("search", organization_id, self.search_type, encoded_params)
 
 
 class SearchAllView(SearchBaseView):

@@ -100,6 +100,7 @@ class CandidateResumeUploadView(views.APIView):
     from rest_framework.parsers import FormParser, MultiPartParser
     permission_classes = [IsCandidateUser]
     parser_classes = [MultiPartParser, FormParser]
+    throttle_scope = "upload"
 
     def post(self, request, *args, **kwargs):
         import hashlib

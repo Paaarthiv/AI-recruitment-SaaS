@@ -2,6 +2,7 @@ import hashlib
 import logging
 
 from django.conf import settings
+from django.core.cache import cache
 from django.db import connection
 from django.db.models import Count
 from pgvector.django import CosineDistance
@@ -25,6 +26,7 @@ from apps.candidates.serializers import (
     PublicApplicationResponseMixin,
 )
 from apps.candidates.tasks import extract_resume_text, extract_resume_text_from_bytes
+from apps.core.cache import org_cache_key
 from apps.core.models import AuditLog
 from apps.core.storage import upload_file
 from apps.notifications.models import Notification
@@ -35,6 +37,8 @@ from .models import Job
 from .serializers import JobSerializer, PublicJobSerializer
 
 logger = logging.getLogger(__name__)
+JOB_LIST_CACHE_SECONDS = 120
+PUBLIC_JOB_LIST_CACHE_SECONDS = 120
 
 
 def get_recruiter_organization(request):
@@ -104,6 +108,18 @@ def attach_resume_to_application(application, file, uploaded_by=None) -> Resume:
 class JobListCreateView(generics.ListCreateAPIView):
     serializer_class = JobSerializer
     permission_classes = [IsVerifiedRecruiter]
+
+    def list(self, request, *args, **kwargs):
+        organization = get_recruiter_organization(request)
+        cache_key = org_cache_key("jobs:list", organization, request.query_params.urlencode())
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response(cached)
+
+        queryset = self.filter_queryset(self.get_queryset())
+        data = self.get_serializer(queryset, many=True).data
+        cache.set(cache_key, data, timeout=JOB_LIST_CACHE_SECONDS)
+        return Response(data)
 
     def get_queryset(self):
         organization = get_recruiter_organization(self.request)
@@ -483,6 +499,18 @@ class RankedCandidatesView(views.APIView):
 class PublicJobListView(generics.ListAPIView):
     serializer_class = PublicJobSerializer
     permission_classes = [AllowAny]
+    throttle_scope = "search"
+
+    def list(self, request, *args, **kwargs):
+        cache_key = f"jobs:public:list:{request.query_params.urlencode()}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response(cached)
+
+        queryset = self.filter_queryset(self.get_queryset())
+        data = self.get_serializer(queryset, many=True).data
+        cache.set(cache_key, data, timeout=PUBLIC_JOB_LIST_CACHE_SECONDS)
+        return Response(data)
 
     def get_queryset(self):
         queryset = Job.objects.filter(status=Job.Status.PUBLISHED).select_related("organization")
@@ -505,6 +533,7 @@ class PublicJobApplyView(PublicApplicationResponseMixin, generics.CreateAPIView)
     serializer_class = PublicApplicationCreateSerializer
     permission_classes = [AllowAny]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+    throttle_scope = "upload"
 
     def dispatch(self, request, *args, **kwargs):
         self.job = generics.get_object_or_404(

@@ -2,6 +2,7 @@ from django.db import IntegrityError, transaction
 from django.urls import reverse
 from rest_framework import serializers
 
+from apps.core.security import sanitize_text, validate_resume_upload
 from apps.jobs.models import Job
 
 from .models import Application, ApplicationHistory, Candidate, CandidateNote, ParsedResume, Resume
@@ -105,18 +106,7 @@ class ResumeUploadSerializer(serializers.Serializer):
             )
         
         file = attrs["file"]
-        # Max size 10MB
-        if file.size > 10 * 1024 * 1024:
-            raise serializers.ValidationError("File size must be under 10MB.")
-        
-        # Mime type check
-        allowed_types = [
-            "application/pdf",
-            "application/msword",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        ]
-        if file.content_type not in allowed_types:
-            raise serializers.ValidationError("Only PDF and DOCX files are supported.")
+        validate_resume_upload(file)
             
         return attrs
 
@@ -153,6 +143,9 @@ class CandidateNoteSerializer(serializers.ModelSerializer):
             "updated_at",
         )
         read_only_fields = ("id", "candidate", "author_email", "created_at", "updated_at")
+
+    def validate_body(self, value):
+        return sanitize_text(value)
 
 
 class ApplicationHistorySerializer(serializers.ModelSerializer):
@@ -195,6 +188,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
             "organization",
             "organization_name",
             "status",
+            "source",
             "current_stage",
             "semantic_score",
             "skill_score",
@@ -213,6 +207,7 @@ class ApplicationSerializer(serializers.ModelSerializer):
             "job_slug",
             "organization",
             "organization_name",
+            "source",
             "current_stage",
             "semantic_score",
             "skill_score",
@@ -250,7 +245,7 @@ class ApplicationDetailSerializer(ApplicationSerializer):
         read_only_fields = ApplicationSerializer.Meta.read_only_fields + ("history", "resumes")
 
     def get_resumes(self, obj):
-        resumes = obj.resumes.select_related("candidate", "application").all()
+        resumes = obj.resumes.select_related("candidate", "application", "parsed_resume").all()
         return ResumeSerializer(
             resumes,
             many=True,
@@ -269,6 +264,8 @@ class ApplicationStatusUpdateSerializer(serializers.Serializer):
     def validate(self, attrs):
         if not attrs.get("status") and not attrs.get("stage_id"):
             raise serializers.ValidationError("Either status or stage_id is required.")
+        if "notes" in attrs:
+            attrs["notes"] = sanitize_text(attrs["notes"])
         return attrs
 
 
@@ -279,6 +276,11 @@ class PublicApplicationCreateSerializer(serializers.Serializer):
     phone = serializers.CharField(max_length=50, required=False, allow_blank=True)
     linkedin_url = serializers.URLField(required=False, allow_blank=True)
     github_url = serializers.URLField(required=False, allow_blank=True)
+    source = serializers.ChoiceField(
+        choices=Application.Source.choices,
+        required=False,
+        default=Application.Source.DIRECT,
+    )
     resume = serializers.FileField(required=False)
 
     def validate(self, attrs):
@@ -289,19 +291,17 @@ class PublicApplicationCreateSerializer(serializers.Serializer):
 
         resume = attrs.get("resume")
         if resume:
-            if resume.size > 10 * 1024 * 1024:
-                raise serializers.ValidationError({"resume": "File size must be under 10MB."})
-
-            allowed_types = [
-                "application/pdf",
-                "application/msword",
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            ]
-            if resume.content_type not in allowed_types:
-                raise serializers.ValidationError(
-                    {"resume": "Only PDF and DOCX files are supported."}
-                )
+            validate_resume_upload(resume, field_name="resume")
         return attrs
+
+    def validate_first_name(self, value):
+        return sanitize_text(value)
+
+    def validate_last_name(self, value):
+        return sanitize_text(value)
+
+    def validate_phone(self, value):
+        return sanitize_text(value)
 
     def create(self, validated_data):
         job = self.context["job"]
@@ -341,7 +341,10 @@ class PublicApplicationCreateSerializer(serializers.Serializer):
                 application, app_created = Application.objects.get_or_create(
                     candidate=candidate,
                     job=job,
-                    defaults={"organization": job.organization},
+                    defaults={
+                        "organization": job.organization,
+                        "source": validated_data.get("source", Application.Source.DIRECT),
+                    },
                 )
             except IntegrityError:
                 application = Application.objects.get(candidate=candidate, job=job)

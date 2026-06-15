@@ -23,6 +23,7 @@ SEMANTIC_WEIGHT = 0.70
 KEYWORD_WEIGHT = 0.30
 DEFAULT_LIMIT = 20
 MAX_LIMIT = 50
+MAX_SCAN_ROWS = 500
 STOPWORDS = {
     "a",
     "an",
@@ -68,7 +69,7 @@ class SearchService:
             )
             .select_related("candidate", "application", "application__job")
             .order_by("-created_at")
-        )
+        )[:MAX_SCAN_ROWS]
 
         results_by_candidate = {}
         for parsed_resume in queryset:
@@ -156,7 +157,7 @@ class SearchService:
             queryset = queryset.filter(location__icontains=filters.location)
 
         results = []
-        for job in queryset:
+        for job in queryset[:MAX_SCAN_ROWS]:
             job_skills = extract_job_skills(job)
             if not _passes_skill_filter(job_skills, filters.skills):
                 continue
