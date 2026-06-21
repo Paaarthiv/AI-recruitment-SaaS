@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/banner.png" alt="SkillScout — AI Recruitment SaaS · Math ranks. AI explains. You decide." width="100%" />
+</p>
+
 # SkillScout — AI Recruitment SaaS
 
 > **Math ranks. AI explains. You decide.**
