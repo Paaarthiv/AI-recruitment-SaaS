@@ -11,10 +11,13 @@ const nextConfig = {
   // Proxy API calls through the frontend's own domain so auth cookies stay
   // first-party (frontend on Vercel, backend on Railway are different hosts).
   async rewrites() {
+    // Always send a trailing slash to the backend. `:path*` does not capture
+    // the incoming trailing slash, so we append one explicitly — otherwise
+    // Django's APPEND_SLASH 301-redirects and we get an infinite proxy loop.
     return [
       {
         source: "/api/:path*",
-        destination: `${backendOrigin}/api/:path*`,
+        destination: `${backendOrigin}/api/:path*/`,
       },
     ];
   },
