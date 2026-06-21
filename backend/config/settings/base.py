@@ -235,9 +235,28 @@ CORS_ALLOW_CREDENTIALS = True
 # Browser security
 # ---------------------------------------------------------------------------
 CSRF_COOKIE_NAME = "csrftoken"
-CSRF_COOKIE_SAMESITE = "Lax"
 CSRF_COOKIE_HTTPONLY = False
-SESSION_COOKIE_SAMESITE = "Lax"
+
+# Cookie SameSite — "Lax" for same-site (local dev), "None" for cross-site
+# production (frontend and backend on different domains, e.g. Vercel + Railway).
+# Browsers require Secure when SameSite=None.
+COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "Lax")
+CSRF_COOKIE_SAMESITE = COOKIE_SAMESITE
+SESSION_COOKIE_SAMESITE = COOKIE_SAMESITE
+AUTH_COOKIE_SAMESITE = COOKIE_SAMESITE
+AUTH_COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "false" if DEBUG else "true").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+
+# Origins trusted for cross-site CSRF-protected POSTs (full scheme + host).
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
+    if origin.strip()
+]
 ENFORCE_CSRF_ON_COOKIE_AUTH = os.getenv(
     "ENFORCE_CSRF_ON_COOKIE_AUTH",
     "false" if DEBUG else "true",

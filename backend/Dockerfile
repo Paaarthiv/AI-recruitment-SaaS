@@ -32,5 +32,7 @@ RUN python manage.py collectstatic --noinput
 
 EXPOSE 8000
 
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "4"]
+# Run migrations, then serve via Daphne (ASGI) so Django Channels / WebSockets
+# work. Bind to the platform-provided $PORT (Railway), defaulting to 8000.
+CMD ["sh", "-c", "python manage.py migrate --noinput && daphne -b 0.0.0.0 -p ${PORT:-8000} config.asgi:application"]
 
