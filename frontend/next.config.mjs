@@ -1,7 +1,19 @@
 /** @type {import('next').NextConfig} */
+const backendOrigin = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 const nextConfig = {
   reactStrictMode: true,
   allowedDevOrigins: ["127.0.0.1"],
+  // Proxy API calls through the frontend's own domain so auth cookies stay
+  // first-party (frontend on Vercel, backend on Railway are different hosts).
+  async rewrites() {
+    return [
+      {
+        source: "/api/:path*",
+        destination: `${backendOrigin}/api/:path*`,
+      },
+    ];
+  },
   async headers() {
     return [
       {
