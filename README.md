@@ -6,7 +6,28 @@
 
 > **Math ranks. AI explains. You decide.**
 
-SkillScout is an AI-assisted enterprise recruitment platform. It ingests resumes, ranks candidates against a job with transparent scoring, and uses a locally-served LLM to *explain* every ranking in plain language — so recruiters stay in control of the final call. It ships with two portals: a full recruiter dashboard and a candidate-facing application portal.
+<p align="center">
+  <img src="https://img.shields.io/badge/license-MIT-EB4425.svg" alt="License: MIT" />
+  <img src="https://img.shields.io/badge/Next.js-16-black?logo=next.js" alt="Next.js" />
+  <img src="https://img.shields.io/badge/Django-5.2-092E20?logo=django" alt="Django" />
+  <img src="https://img.shields.io/badge/PostgreSQL-pgvector-336791?logo=postgresql&logoColor=white" alt="PostgreSQL + pgvector" />
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white" alt="Python 3.12" />
+</p>
+
+SkillScout is an AI-assisted enterprise recruitment platform. It ingests resumes, ranks candidates against a job with transparent scoring, and uses an LLM to *explain* every ranking in plain language — so recruiters stay in control of the final call. It ships with two portals: a full recruiter dashboard and a candidate-facing application portal.
+
+---
+
+## 🚀 Live Demo
+
+| | URL |
+|---|---|
+| **App** (recruiter + candidate portals) | **https://skillscout-parthiv-a-ms-projects.vercel.app** |
+| **API** | https://ai-recruitment-saas-production.up.railway.app |
+| **API docs** (Swagger) | https://ai-recruitment-saas-production.up.railway.app/api/docs/ |
+
+> Frontend on **Vercel** · backend (Django + Celery + PostgreSQL/pgvector + Redis) on **Railway**. Create an account from the app to explore the recruiter dashboard.
 
 ---
 
@@ -198,6 +219,14 @@ wiki/           Knowledge base (Obsidian)
 
 ---
 
+## Deployment
+
+Production runs the **frontend on Vercel** and the **backend on Railway** (Django served by Daphne, a Celery worker, PostgreSQL + pgvector, and Redis). The frontend proxies API calls through its own origin so auth cookies stay first-party.
+
+See **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** for the full step-by-step guide (services, environment variables, and cross-site cookie setup).
+
+---
+
 ## License
 
-Released under the [MIT License](LICENSE).
+Released under the [MIT License](LICENSE) © Parthiv A M.
