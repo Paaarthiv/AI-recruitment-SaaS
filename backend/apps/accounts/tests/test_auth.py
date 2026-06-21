@@ -69,8 +69,17 @@ def test_registration_creates_user_organization_and_recruiter_profile(api_client
     user = User.objects.get(email="asha@example.com")
     recruiter = user.recruiter_profile
     assert user.role == User.Role.RECRUITER
-    assert recruiter.verification_status == Recruiter.VerificationStatus.PENDING
+    assert recruiter.verification_status == Recruiter.VerificationStatus.APPROVED
+    assert recruiter.is_verified is True
     assert recruiter.organization.name == "Nexus Talent"
+
+
+def test_csrf_endpoint_issues_token(api_client):
+    response = api_client.get(reverse("auth-csrf"), format="json")
+
+    assert response.status_code == 200
+    assert response.json()["csrfToken"]
+    assert "csrftoken" in response.cookies
 
 
 def test_registration_rejects_duplicate_email(api_client):
@@ -93,7 +102,7 @@ def test_registration_requires_matching_password_confirmation(api_client):
     assert "confirm_password" in response.json()
 
 
-def test_pending_recruiter_cannot_log_in(api_client):
+def test_pending_recruiter_can_log_in_while_verification_is_dormant(api_client):
     create_recruiter(recruiter_status=Recruiter.VerificationStatus.PENDING)
 
     response = api_client.post(
@@ -102,8 +111,9 @@ def test_pending_recruiter_cannot_log_in(api_client):
         format="json",
     )
 
-    assert response.status_code in {401, 403}
-    assert "pending approval" in response.json()["detail"]
+    assert response.status_code == 200
+    assert response.cookies["access"]["httponly"]
+    assert response.cookies["refresh"]["httponly"]
 
 
 def test_approved_recruiter_can_log_in_and_receives_cookies(api_client):
@@ -182,3 +192,24 @@ def test_login_rate_limit_returns_too_many_requests(api_client):
     ]
 
     assert responses[-1].status_code == 429
+
+
+def test_failed_login_lockout_uses_cache(api_client, settings):
+    settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["auth_login"] = "100/min"
+    settings.AUTH_FAILED_LOGIN_LIMIT = 2
+    settings.AUTH_LOCKOUT_SECONDS = 60
+    create_recruiter()
+    payload = {"email": "recruiter@example.com", "password": "WrongPass123!"}
+
+    first = api_client.post(reverse("auth-login"), payload, format="json")
+    second = api_client.post(reverse("auth-login"), payload, format="json")
+    locked = api_client.post(
+        reverse("auth-login"),
+        {"email": "recruiter@example.com", "password": "StrongPass123!"},
+        format="json",
+    )
+
+    assert first.status_code == 401
+    assert second.status_code == 401
+    assert locked.status_code == 401
+    assert locked.json()["detail"] == "Too many failed login attempts. Please try again later."

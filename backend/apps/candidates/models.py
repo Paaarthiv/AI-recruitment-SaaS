@@ -3,6 +3,8 @@ import uuid
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
+from pgvector.django import HnswIndex, VectorField
 
 
 class Candidate(models.Model):
@@ -18,6 +20,21 @@ class Candidate(models.Model):
     phone = models.CharField(max_length=50, blank=True)
     linkedin_url = models.URLField(blank=True)
     github_url = models.URLField(blank=True)
+    # Candidate-managed profile fields
+    state = models.CharField(max_length=120, blank=True)
+    country = models.CharField(max_length=120, blank=True)
+    years_of_experience = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True
+    )
+    institution = models.CharField(max_length=255, blank=True)
+    cgpa = models.CharField(max_length=20, blank=True)
+    skills = models.JSONField(default=list, blank=True)
+    # projects: list of {"name": str, "description": str}
+    projects = models.JSONField(default=list, blank=True)
+    # experience_entries: list of {"role": str, "company": str, "description": str}
+    experience_entries = models.JSONField(default=list, blank=True)
+    # certifications: list of str
+    certifications = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -31,6 +48,8 @@ class Candidate(models.Model):
         ]
         indexes = [
             models.Index(fields=["organization", "email"]),
+            models.Index(fields=["organization", "last_name", "first_name"]),
+            models.Index(fields=["organization", "created_at"]),
         ]
 
     def __str__(self) -> str:
@@ -92,11 +111,117 @@ class Resume(models.Model):
         indexes = [
             models.Index(fields=["candidate"]),
             models.Index(fields=["file_hash"]),
+            models.Index(fields=["application", "file_hash"]),
         ]
 
     def __str__(self) -> str:
         return f"Resume {self.file_name} for {self.candidate}"
 
+
+class ParsedResume(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        PROCESSING = "processing", "Processing"
+        COMPLETED = "completed", "Completed"
+        ERROR = "error", "Error"
+
+    class Confidence(models.TextChoices):
+        HIGH = "high", "High"
+        MEDIUM = "medium", "Medium"
+        LOW = "low", "Low"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    resume = models.OneToOneField(
+        Resume,
+        on_delete=models.CASCADE,
+        related_name="parsed_resume",
+    )
+    candidate = models.ForeignKey(
+        Candidate,
+        on_delete=models.CASCADE,
+        related_name="parsed_resumes",
+    )
+    application = models.ForeignKey(
+        "candidates.Application",
+        on_delete=models.CASCADE,
+        related_name="parsed_resumes",
+        null=True,
+        blank=True,
+    )
+    schema_version = models.PositiveSmallIntegerField(default=1)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    data = models.JSONField(default=dict, blank=True)
+    confidence = models.CharField(
+        max_length=20,
+        choices=Confidence.choices,
+        default=Confidence.LOW,
+    )
+    parser_model = models.CharField(max_length=100, blank=True)
+    validation_errors = models.JSONField(default=list, blank=True)
+    token_usage = models.JSONField(default=dict, blank=True)
+    estimated_cost = models.DecimalField(max_digits=10, decimal_places=6, default=0)
+    parsed_at = models.DateTimeField(null=True, blank=True)
+    embedding = VectorField(dimensions=384, null=True, blank=True)
+    embedding_model = models.CharField(max_length=100, blank=True)
+    embedding_text_hash = models.CharField(max_length=64, blank=True, db_index=True)
+    embedding_generated_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["candidate", "status"]),
+            models.Index(fields=["application", "status"]),
+            HnswIndex(
+                fields=["embedding"],
+                name="parsed_resume_embedding_hnsw",
+                m=16,
+                ef_construction=64,
+                opclasses=["vector_cosine_ops"],
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"Parsed resume for {self.candidate}"
+
+
+class CandidateNote(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    candidate = models.ForeignKey(
+        Candidate,
+        on_delete=models.CASCADE,
+        related_name="notes",
+    )
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="candidate_notes",
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="candidate_notes",
+    )
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["organization", "candidate", "created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"Note for {self.candidate} by {self.author_id or 'system'}"
 
 
 class Application(models.Model):
@@ -109,6 +234,14 @@ class Application(models.Model):
         OFFER = "offer", "Offer"
         REJECTED = "rejected", "Rejected"
         HIRED = "hired", "Hired"
+
+    class Source(models.TextChoices):
+        DIRECT = "direct", "Direct"
+        JOB_BOARD = "job_board", "Job Board"
+        LINKEDIN = "linkedin", "LinkedIn"
+        REFERRAL = "referral", "Referral"
+        AGENCY = "agency", "Agency"
+        OTHER = "other", "Other"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     candidate = models.ForeignKey(
@@ -132,6 +265,51 @@ class Application(models.Model):
         default=Status.APPLIED,
         db_index=True,
     )
+    source = models.CharField(
+        max_length=20,
+        choices=Source.choices,
+        default=Source.DIRECT,
+        db_index=True,
+        help_text="Where the application originated (for source-effectiveness analytics).",
+    )
+    current_stage = models.ForeignKey(
+        "pipeline.PipelineStage",
+        on_delete=models.SET_NULL,
+        related_name="applications",
+        null=True,
+        blank=True,
+    )
+    semantic_score = models.DecimalField(
+        max_digits=6,
+        decimal_places=5,
+        null=True,
+        blank=True,
+        help_text="Normalized semantic similarity score from 0.0 to 1.0.",
+    )
+    skill_score = models.DecimalField(
+        max_digits=6,
+        decimal_places=5,
+        null=True,
+        blank=True,
+        help_text="Normalized skill match score from 0.0 to 1.0.",
+    )
+    experience_score = models.DecimalField(
+        max_digits=6,
+        decimal_places=5,
+        null=True,
+        blank=True,
+        help_text="Normalized experience match score from 0.0 to 1.0.",
+    )
+    final_score = models.DecimalField(
+        max_digits=6,
+        decimal_places=5,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Weighted normalized candidate ranking score from 0.0 to 1.0.",
+    )
+    score_version = models.CharField(max_length=50, blank=True)
+    score_calculated_at = models.DateTimeField(null=True, blank=True)
     applied_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -146,17 +324,58 @@ class Application(models.Model):
         indexes = [
             models.Index(fields=["organization", "job"]),
             models.Index(fields=["organization", "status"]),
+            models.Index(fields=["organization", "source"]),
+            models.Index(fields=["organization", "current_stage"]),
+            models.Index(fields=["organization", "job", "status", "applied_at"]),
+            models.Index(
+                fields=["organization", "job", "final_score"],
+                name="applications_job_score_idx",
+            ),
             models.Index(fields=["applied_at"]),
         ]
 
     def __str__(self) -> str:
         return f"{self.candidate} -> {self.job}"
 
-    def transition_status(self, new_status: str, changed_by=None, notes: str = "") -> None:
+    def set_scores(
+        self,
+        *,
+        semantic_score: float,
+        skill_score: float,
+        experience_score: float,
+        final_score: float,
+        score_version: str,
+    ) -> None:
+        self.semantic_score = _score_decimal(semantic_score)
+        self.skill_score = _score_decimal(skill_score)
+        self.experience_score = _score_decimal(experience_score)
+        self.final_score = _score_decimal(final_score)
+        self.score_version = score_version
+        self.score_calculated_at = timezone.now()
+
+    def transition_status(
+        self,
+        new_status: str,
+        changed_by=None,
+        notes: str = "",
+        stage=None,
+    ) -> None:
         """Change status and record the transition in ApplicationHistory."""
+        if stage is not None:
+            from apps.pipeline.services import move_application_to_stage
+
+            move_application_to_stage(self, stage, moved_by=changed_by, notes=notes)
+            return
+
         old_status = self.status
+        old_stage = self.current_stage
+
+        from apps.pipeline.models import PipelineStageHistory
+        from apps.pipeline.services import get_stage_for_status
+
         self.status = new_status
-        self.save(update_fields=["status", "updated_at"])
+        self.current_stage = get_stage_for_status(self.job, new_status)
+        self.save(update_fields=["status", "current_stage", "updated_at"])
         ApplicationHistory.objects.create(
             application=self,
             from_status=old_status,
@@ -164,6 +383,19 @@ class Application(models.Model):
             changed_by=changed_by,
             notes=notes,
         )
+        if old_stage or self.current_stage:
+            PipelineStageHistory.objects.create(
+                application=self,
+                from_stage=old_stage,
+                to_stage=self.current_stage,
+                moved_by=changed_by,
+                notes=notes,
+            )
+
+
+def _score_decimal(value: float) -> str:
+    bounded = min(max(float(value), 0.0), 1.0)
+    return f"{bounded:.5f}"
 
 
 class ApplicationHistory(models.Model):
@@ -189,6 +421,11 @@ class ApplicationHistory(models.Model):
 
     class Meta:
         ordering = ["changed_at"]
+        indexes = [
+            models.Index(fields=["application", "changed_at"]),
+            models.Index(fields=["changed_by", "changed_at"]),
+            models.Index(fields=["to_status", "changed_at"]),
+        ]
 
     def __str__(self) -> str:
         return f"{self.application_id}: {self.from_status} -> {self.to_status}"

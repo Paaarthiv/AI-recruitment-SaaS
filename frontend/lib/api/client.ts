@@ -6,6 +6,24 @@ import axios, {
 
 function getApiBaseUrl() {
   if (process.env.NEXT_PUBLIC_API_URL) {
+    if (typeof window !== "undefined") {
+      try {
+        const configuredUrl = new URL(process.env.NEXT_PUBLIC_API_URL);
+        const localHostnames = new Set(["localhost", "127.0.0.1"]);
+
+        if (
+          localHostnames.has(configuredUrl.hostname) &&
+          localHostnames.has(window.location.hostname) &&
+          configuredUrl.hostname !== window.location.hostname
+        ) {
+          configuredUrl.hostname = window.location.hostname;
+          return configuredUrl.toString().replace(/\/$/, "");
+        }
+      } catch {
+        return process.env.NEXT_PUBLIC_API_URL;
+      }
+    }
+
     return process.env.NEXT_PUBLIC_API_URL;
   }
 
@@ -17,6 +35,7 @@ function getApiBaseUrl() {
 }
 
 const apiBaseUrl = getApiBaseUrl();
+const csrfEndpoint = "/api/v1/auth/csrf/";
 const refreshEndpoint = "/api/v1/auth/refresh/";
 
 type RetryableRequestConfig = InternalAxiosRequestConfig & {
@@ -46,12 +65,49 @@ function notifySessionExpired() {
   }
 }
 
+function shouldBypassRefresh(url: string | undefined) {
+  if (!url) return false;
+  return (
+    url === refreshEndpoint ||
+    url === "/api/v1/auth/login/" ||
+    url === "/api/v1/auth/register/" ||
+    url === "/api/v1/candidate/auth/register/"
+  );
+}
+
 export const apiClient = axios.create({
   baseURL: apiBaseUrl,
   withCredentials: true,
-  headers: {
-    "Content-Type": "application/json",
-  },
+});
+
+function getCookie(name: string) {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function isUnsafeMethod(method: string | undefined) {
+  return !["GET", "HEAD", "OPTIONS", "TRACE"].includes((method ?? "GET").toUpperCase());
+}
+
+apiClient.interceptors.request.use(async (config) => {
+  if (!isUnsafeMethod(config.method) || config.url === csrfEndpoint) {
+    return config;
+  }
+
+  let csrfToken = getCookie("csrftoken");
+  if (!csrfToken && typeof window !== "undefined") {
+    const response = await axios.get<{ csrfToken: string }>(`${apiBaseUrl}${csrfEndpoint}`, {
+      withCredentials: true,
+    });
+    csrfToken = response.data.csrfToken || getCookie("csrftoken");
+  }
+
+  if (csrfToken) {
+    config.headers.set("X-CSRFToken", csrfToken);
+  }
+
+  return config;
 });
 
 apiClient.interceptors.response.use(
@@ -64,8 +120,11 @@ apiClient.interceptors.response.use(
       !originalRequest ||
       status !== 401 ||
       originalRequest._retry ||
-      originalRequest.url === refreshEndpoint
+      shouldBypassRefresh(originalRequest.url)
     ) {
+      if (status === 401 && originalRequest?.url === refreshEndpoint) {
+        notifySessionExpired();
+      }
       return Promise.reject(error);
     }
 

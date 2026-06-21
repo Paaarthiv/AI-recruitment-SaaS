@@ -2,13 +2,13 @@
 type: index
 title: "Wiki Index"
 date_created: 2025-05-22
-date_updated: 2026-05-30
+date_updated: 2026-06-15
 tags: [wiki/index]
 ---
 
 # Wiki Index
 
-> Last updated: 2026-05-30 | Total pages: 53 | Total sources: 1
+> Last updated: 2026-06-15 | Total pages: 61 | Total sources: 1
 
 ## Overview
 
@@ -74,6 +74,18 @@ tags: [wiki/index]
 | [[Sprint 1 Foundation Implementation]] | deep-dive | 2026-05-30 | product/architecture, product/strategy, deployment, backend/django, frontend/nextjs |
 | [[Sprint 2.1 Auth Hardening Plan]] | framework | 2026-05-30 | product/strategy, product/architecture, security/auth, backend/django, frontend/nextjs |
 | [[Sprint 3 Jobs and Applications Foundation]] | framework | 2026-05-30 | product/strategy, product/architecture, recruitment/jobs, recruitment/screening, security/tenancy |
+| [[Sprint 6 Resume Parsing Implementation]] | framework | 2026-05-31 | product/feature, product/architecture, ai/llm, recruitment/screening, resume/parsing, sprint/complete |
+| [[LLM Provider Architecture]] | framework | 2026-05-31 | product/architecture, ai/llm, resume/parsing, product/operations |
+| [[Sprint 8 Candidate Ranking Implementation]] | framework | 2026-06-06 | product/feature, product/architecture, ai/embeddings, ai/scoring, recruitment/screening, ranking, sprint/complete |
+| [[Sprint 9 Hiring Pipeline Implementation]] | framework | 2026-06-07 | product/feature, product/architecture, recruitment/pipeline, kanban, workflow, sprint/complete |
+| [[Sprint 13 Notifications Implementation]] | framework | 2026-06-11 | product/feature, product/architecture, notifications, email, sprint/phase-complete |
+| [[Sprint 14 Analytics Implementation]] | framework | 2026-06-12 | product/feature, product/analytics, recruitment/analytics, dashboard, sprint/implemented |
+| [[Sprint 15 Bulk Operations Implementation]] | framework | 2026-06-14 | product/feature, product/architecture, recruitment/screening, batch-processing, websocket, sprint/implemented |
+| [[Sprint 16 Security Hardening Implementation]] | framework | 2026-06-15 | product/security, backend/django, frontend/nextjs, sprint/implemented |
+| [[Sprint 17 Performance Optimization Implementation]] | framework | 2026-06-15 | product/performance, backend/django, frontend/nextjs, caching, sprint/implemented |
+| [[Sprint 10 Candidate Dashboard Plan]] | framework | 2026-06-10 | product/feature, product/ux, product/architecture, recruitment/screening, candidate-dashboard, sprint/implemented |
+| [[Sprint 11 Semantic Search Implementation]] | framework | 2026-06-11 | product/feature, product/architecture, ai/embeddings, ai/nlp, recruitment/sourcing, semantic-search, sprint/implemented |
+| [[Sprint 12 AI Interview Assistance Plan]] | framework | 2026-06-11 | product/feature, product/architecture, ai/llm, recruitment/interview, recruitment/assessment, sprint/implemented |
 
 ## Decisions
 

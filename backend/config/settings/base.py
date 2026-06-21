@@ -32,6 +32,7 @@ ALLOWED_HOSTS = [
 ]
 
 INSTALLED_APPS = [
+    "daphne",
     # Django built-ins
     "django.contrib.admin",
     "django.contrib.auth",
@@ -44,6 +45,9 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
+    "drf_spectacular",
+    "channels",
+    "pgvector.django",
     # Internal apps
     "apps.accounts",
     "apps.core",
@@ -52,11 +56,16 @@ INSTALLED_APPS = [
     "apps.candidates",
     "apps.pipeline",
     "apps.ai_engine",
+    "apps.interviews",
     "apps.analytics",
+    "apps.notifications",
+    "apps.batch",
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "apps.core.middleware.SecurityHeadersMiddleware",
+    "django.middleware.gzip.GZipMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -65,6 +74,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "apps.core.middleware.ApiSecurityAuditMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -118,9 +128,38 @@ MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ---------------------------------------------------------------------------
+# Cache / rate limiting
+# ---------------------------------------------------------------------------
+CACHE_URL = os.getenv("CACHE_URL", "")
+CACHES = {
+    "default": (
+        {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": CACHE_URL,
+        }
+        if CACHE_URL
+        else {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "recruitai-default",
+        }
+    )
+}
+
+# ---------------------------------------------------------------------------
 # Django REST Framework
 # ---------------------------------------------------------------------------
+SPECTACULAR_SETTINGS = {
+    "TITLE": "SkillScout API",
+    "DESCRIPTION": (
+        "AI-assisted recruitment platform API — jobs, candidates, applications, "
+        "AI scoring, pipeline, interviews, analytics, and notifications."
+    ),
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+}
+
 REST_FRAMEWORK = {
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "apps.accounts.authentication.CookieJWTAuthentication",
     ],
@@ -128,12 +167,18 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ],
     "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
         "rest_framework.throttling.ScopedRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
+        "anon": os.getenv("API_ANON_RATE", "100/min"),
+        "user": os.getenv("API_USER_RATE", "100/min"),
         "auth_register": os.getenv("AUTH_REGISTER_RATE", "5/min"),
         "auth_login": os.getenv("AUTH_LOGIN_RATE", "5/min"),
         "auth_refresh": os.getenv("AUTH_REFRESH_RATE", "20/min"),
+        "upload": os.getenv("UPLOAD_RATE", "10/min"),
+        "search": os.getenv("SEARCH_RATE", "30/min"),
     },
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
@@ -187,20 +232,70 @@ CORS_ALLOWED_ORIGINS = [
 CORS_ALLOW_CREDENTIALS = True
 
 # ---------------------------------------------------------------------------
+# Browser security
+# ---------------------------------------------------------------------------
+CSRF_COOKIE_NAME = "csrftoken"
+CSRF_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_HTTPONLY = False
+SESSION_COOKIE_SAMESITE = "Lax"
+ENFORCE_CSRF_ON_COOKIE_AUTH = os.getenv(
+    "ENFORCE_CSRF_ON_COOKIE_AUTH",
+    "false" if DEBUG else "true",
+).lower() in {"1", "true", "yes", "on"}
+AUTH_FAILED_LOGIN_LIMIT = int(os.getenv("AUTH_FAILED_LOGIN_LIMIT", "10"))
+AUTH_LOCKOUT_SECONDS = int(os.getenv("AUTH_LOCKOUT_SECONDS", "900"))
+CONTENT_SECURITY_POLICY = os.getenv(
+    "CONTENT_SECURITY_POLICY",
+    "default-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+)
+
+# ---------------------------------------------------------------------------
 # Redis / Celery
 # ---------------------------------------------------------------------------
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://localhost:6379/1")
 CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/2")
 CELERY_TASK_DEFAULT_QUEUE = "default"
+BATCH_MAX_ACTIVE_PER_ORG = int(os.getenv("BATCH_MAX_ACTIVE_PER_ORG", "3"))
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [REDIS_URL],
+        },
+    }
+}
 
 # ---------------------------------------------------------------------------
 # AI / Ollama — settings only. No implementation in Sprint 1.
 # ---------------------------------------------------------------------------
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-LLM_MODEL = os.getenv("LLM_MODEL", "qwen2.5-coder:7b")
+OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "")
+# Primary parsing model. NOTE: gpt-oss:20b returns empty output on the Ollama
+# Cloud endpoint (harmony-channel content is dropped server-side), so it is not a
+# usable default. qwen3-coder:480b is fast and reliable for structured JSON.
+LLM_MODEL = os.getenv("LLM_MODEL", "qwen3-coder:480b")
 LLM_FALLBACK_MODELS = [
-    model.strip() for model in os.getenv("LLM_FALLBACK_MODELS", "mistral,phi3").split(",")
+    model.strip()
+    for model in os.getenv("LLM_FALLBACK_MODELS", "gemma3:12b,gemma3:4b").split(",")
+    if model.strip()
 ]
+OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "4096"))
+OLLAMA_TIMEOUT_SECONDS = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "120"))
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
 EMBEDDING_DIMENSIONS = int(os.getenv("EMBEDDING_DIMENSIONS", "384"))
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "sentence_transformers")
+
+# ---------------------------------------------------------------------------
+# Email (notifications) — provider-agnostic via Django SMTP.
+# dev.py overrides EMAIL_BACKEND with the console backend.
+# ---------------------------------------------------------------------------
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
+EMAIL_HOST = os.getenv("EMAIL_HOST", "")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() in {"1", "true", "yes", "on"}
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@skillscout.local")
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")

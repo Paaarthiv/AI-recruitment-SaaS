@@ -1,10 +1,15 @@
+import hashlib
+
+from django.conf import settings
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth.password_validation import validate_password as _validate_password
+from django.core.cache import cache
 from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed
 
 from apps.core.models import AuditLog
+from apps.core.security import sanitize_text
 from apps.organizations.models import Organization
 
 from .models import Recruiter, User
@@ -79,9 +84,19 @@ class RegisterSerializer(serializers.Serializer):
     linkedin_profile = serializers.URLField(required=False, allow_blank=True)
 
     def validate_email(self, value):
-        if User.objects.filter(email=value).exists():
+        email = value.strip().lower()
+        if User.objects.filter(email=email).exists():
             raise serializers.ValidationError("A user with this email already exists.")
-        return value
+        return email
+
+    def validate_first_name(self, value):
+        return sanitize_text(value)
+
+    def validate_last_name(self, value):
+        return sanitize_text(value)
+
+    def validate_company_name(self, value):
+        return sanitize_text(value)
 
     def validate_password(self, value):
         validate_password(value)
@@ -131,8 +146,8 @@ class RegisterSerializer(serializers.Serializer):
             last_name=validated_data["last_name"],
             organization=org,
             linkedin_profile=validated_data.get("linkedin_profile", ""),
-            verification_status=Recruiter.VerificationStatus.PENDING,
-            is_verified=False,
+            verification_status=Recruiter.VerificationStatus.APPROVED,
+            is_verified=True,
         )
 
         AuditLog.log(action="auth.register", user=user, entity=user)
@@ -147,9 +162,16 @@ class CandidateRegisterSerializer(serializers.Serializer):
     confirm_password = serializers.CharField(write_only=True)
 
     def validate_email(self, value):
-        if User.objects.filter(email=value).exists():
+        email = value.strip().lower()
+        if User.objects.filter(email=email).exists():
             raise serializers.ValidationError("A user with this email already exists.")
-        return value
+        return email
+
+    def validate_first_name(self, value):
+        return sanitize_text(value)
+
+    def validate_last_name(self, value):
+        return sanitize_text(value)
 
     def validate_password(self, value):
         _validate_password(value)
@@ -181,27 +203,37 @@ class LoginSerializer(serializers.Serializer):
     password = serializers.CharField(write_only=True)
 
     def validate(self, attrs):
-        email = attrs.get("email")
+        email = (attrs.get("email") or "").strip().lower()
         password = attrs.get("password")
+        request = self.context.get("request")
+
+        if email and _is_login_locked(email, request):
+            raise AuthenticationFailed(
+                "Too many failed login attempts. Please try again later.",
+                code="account_locked",
+            )
 
         if email and password:
             user = authenticate(
-                request=self.context.get("request"),
+                request=request,
                 email=email,
                 password=password,
             )
             if not user:
+                _record_failed_login(email, request)
                 raise AuthenticationFailed("Invalid email or password.", code="invalid_credentials")
         else:
             raise AuthenticationFailed("Must include 'email' and 'password'.")
 
         if not user.is_active:
+            _record_failed_login(email, request)
             raise AuthenticationFailed("User account is disabled.", code="account_disabled")
 
-        # Recruiter-specific access checks (skip for candidates and admins)
+        # Recruiter-specific shape checks (skip for candidates and admins)
         if user.is_recruiter:
             self._validate_recruiter_access(user)
 
+        _clear_failed_login(email, request)
         attrs["user"] = user
         return attrs
 
@@ -210,41 +242,9 @@ class LoginSerializer(serializers.Serializer):
         if not profile:
             raise AuthenticationFailed("Recruiter profile missing.", code="profile_missing")
 
-        if profile.verification_status == Recruiter.VerificationStatus.PENDING:
-            raise AuthenticationFailed(
-                "Your account is pending approval.",
-                code="recruiter_pending",
-            )
-        if profile.verification_status == Recruiter.VerificationStatus.REJECTED:
-            raise AuthenticationFailed(
-                "Your account access has been denied.",
-                code="recruiter_rejected",
-            )
-        if profile.verification_status == Recruiter.VerificationStatus.SUSPENDED:
-            raise AuthenticationFailed(
-                "Your account has been suspended.",
-                code="recruiter_suspended",
-            )
-
         org = profile.organization
         if not org:
             raise AuthenticationFailed("Organization missing.", code="org_missing")
-
-        if org.approval_status == Organization.ApprovalStatus.PENDING:
-            raise AuthenticationFailed(
-                "Your organization is pending approval.",
-                code="org_pending",
-            )
-        if org.approval_status == Organization.ApprovalStatus.REJECTED:
-            raise AuthenticationFailed(
-                "Your organization access has been denied.",
-                code="org_rejected",
-            )
-        if org.approval_status == Organization.ApprovalStatus.SUSPENDED:
-            raise AuthenticationFailed(
-                "Your organization has been suspended.",
-                code="org_suspended",
-            )
 
 
 class RecruiterStatusUpdateSerializer(serializers.Serializer):
@@ -253,3 +253,37 @@ class RecruiterStatusUpdateSerializer(serializers.Serializer):
 
 class OrganizationStatusUpdateSerializer(serializers.Serializer):
     pass
+
+
+def _login_cache_key(email: str, request, suffix: str) -> str:
+    ip_address = request.META.get("REMOTE_ADDR", "") if request else ""
+    digest = hashlib.sha256(f"{email}:{ip_address}".encode()).hexdigest()
+    return f"auth:login:{suffix}:{digest}"
+
+
+def _is_login_locked(email: str, request) -> bool:
+    return bool(cache.get(_login_cache_key(email, request, "locked")))
+
+
+def _record_failed_login(email: str, request) -> None:
+    attempts_key = _login_cache_key(email, request, "attempts")
+    attempts = int(cache.get(attempts_key) or 0) + 1
+    cache.set(attempts_key, attempts, timeout=settings.AUTH_LOCKOUT_SECONDS)
+
+    if attempts >= settings.AUTH_FAILED_LOGIN_LIMIT:
+        cache.set(
+            _login_cache_key(email, request, "locked"),
+            True,
+            timeout=settings.AUTH_LOCKOUT_SECONDS,
+        )
+
+    AuditLog.log(
+        action="auth.login_failed",
+        metadata={"email": email, "attempts": attempts},
+        ip_address=request.META.get("REMOTE_ADDR") if request else None,
+    )
+
+
+def _clear_failed_login(email: str, request) -> None:
+    cache.delete(_login_cache_key(email, request, "attempts"))
+    cache.delete(_login_cache_key(email, request, "locked"))

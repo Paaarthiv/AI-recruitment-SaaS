@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import transaction
+from django.middleware.csrf import get_token
 from rest_framework import generics, status, views
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -38,6 +39,14 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
         samesite="Lax",
         secure=not settings.DEBUG,
     )
+
+
+class CsrfTokenView(views.APIView):
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def get(self, request, *args, **kwargs):
+        return Response({"csrfToken": get_token(request)})
 
 
 class RegisterView(generics.CreateAPIView):
