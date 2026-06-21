@@ -33,6 +33,8 @@ RUN python manage.py collectstatic --noinput
 EXPOSE 8000
 
 # Run migrations, then serve via Daphne (ASGI) so Django Channels / WebSockets
-# work. Bind to the platform-provided $PORT (Railway), defaulting to 8000.
-CMD ["sh", "-c", "python manage.py migrate --noinput && daphne -b 0.0.0.0 -p ${PORT:-8000} config.asgi:application"]
+# work. Bind to :: (IPv6 dual-stack) because Railway's edge reaches the
+# container over its IPv6 private network; 0.0.0.0 (IPv4-only) is unreachable
+# and yields 502s. Use the platform-provided $PORT, defaulting to 8000.
+CMD ["sh", "-c", "python manage.py migrate --noinput && daphne -b :: -p ${PORT:-8000} config.asgi:application"]
 
