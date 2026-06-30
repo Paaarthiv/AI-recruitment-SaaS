@@ -2,9 +2,6 @@
   <img src="docs/banner.png" alt="SkillScout — AI Recruitment SaaS · Math ranks. AI explains. You decide." width="100%" />
 </p>
 
-<p align="center">
-  <img src="assets/banner.png" alt="SkillScout — AI Recruitment & ATS Platform" width="100%">
-</p>
 <h1 align="center">SkillScout</h1>
 <p align="center">
   An enterprise-grade, multi-tenant AI recruitment and applicant-tracking platform.
