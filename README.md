@@ -2,113 +2,92 @@
   <img src="docs/banner.png" alt="SkillScout — AI Recruitment SaaS · Math ranks. AI explains. You decide." width="100%" />
 </p>
 
-# SkillScout — AI Recruitment SaaS
-
-> **Math ranks. AI explains. You decide.**
-
 <p align="center">
-  <img src="https://img.shields.io/badge/license-MIT-EB4425.svg" alt="License: MIT" />
-  <img src="https://img.shields.io/badge/Next.js-16-black?logo=next.js" alt="Next.js" />
-  <img src="https://img.shields.io/badge/Django-5.2-092E20?logo=django" alt="Django" />
-  <img src="https://img.shields.io/badge/PostgreSQL-pgvector-336791?logo=postgresql&logoColor=white" alt="PostgreSQL + pgvector" />
-  <img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white" alt="Python 3.12" />
+  <img src="assets/banner.png" alt="SkillScout — AI Recruitment & ATS Platform" width="100%">
 </p>
 
-SkillScout is an AI-assisted enterprise recruitment platform. It ingests resumes, ranks candidates against a job with transparent scoring, and uses an LLM to *explain* every ranking in plain language — so recruiters stay in control of the final call. It ships with two portals: a full recruiter dashboard and a candidate-facing application portal.
+<h1 align="center">SkillScout</h1>
+
+<p align="center">
+  An enterprise-grade, multi-tenant AI recruitment and applicant-tracking platform.
+  <br>
+  <strong>Math decides, AI explains.</strong>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Backend-Django%20REST-092E20?logo=django&logoColor=white" alt="Django REST">
+  <img src="https://img.shields.io/badge/Frontend-Next.js%20%C2%B7%20TypeScript-000000?logo=nextdotjs&logoColor=white" alt="Next.js">
+  <img src="https://img.shields.io/badge/Database-PostgreSQL%20%C2%B7%20Supabase-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL">
+  <img src="https://img.shields.io/badge/AI-Local%20LLM%20(Ollama)-0EA5E9?logo=ollama&logoColor=white" alt="Ollama">
+  <img src="https://img.shields.io/badge/License-MIT-blue" alt="MIT License">
+</p>
 
 ---
 
-## 🚀 Live Demo
+## Overview
 
-| | URL |
-|---|---|
-| **App** (recruiter + candidate portals) | **https://skillscout-parthiv-a-ms-projects.vercel.app** |
-| **API** | https://ai-recruitment-saas-production.up.railway.app |
-| **API docs** (Swagger) | https://ai-recruitment-saas-production.up.railway.app/api/docs/ |
+SkillScout is a recruitment and applicant-tracking system (ATS) that helps organizations
+move candidates through hiring pipelines and supports every decision with explainable AI.
+Deterministic scoring drives the ranking; a locally hosted language model only **explains**
+the result, so outcomes stay reproducible, auditable, and free of per-request API cost.
 
-> Frontend on **Vercel** · backend (Django + Celery + PostgreSQL/pgvector + Redis) on **Railway**. Create an account from the app to explore the recruiter dashboard.
+The platform is multi-tenant: each organization manages its own jobs, candidates, and team
+members under role-based access control, behind secure JWT authentication.
 
----
+## Key Features
 
-## Highlights
+- **Multi-tenant organizations** with role-based access control across four roles —
+  Administrator, Recruiter, Hiring Manager, and Interviewer.
+- **Secure authentication** using JSON Web Tokens stored in HTTP-only cookies.
+- **End-to-end hiring workflows** — job posting, candidate application tracking, resume and
+  document management, and pipeline stage management.
+- **AI candidate evaluation** — automated resume parsing, semantic candidate–job matching,
+  and hybrid scoring, with concise, LLM-generated recruiter insights.
+- **Zero API cost AI** — language-model features run on a locally hosted model via Ollama.
+- **Asynchronous processing** with Celery and Redis for parsing, embedding, and scoring jobs.
+- **Production tooling** — Docker, GitHub Actions CI/CD, and automated testing.
 
-- **Transparent AI ranking** — deterministic scoring math produces the ranking; the LLM generates a human-readable explanation for *why* each candidate scored the way they did. No black-box decisions.
-- **Semantic candidate search** — vector embeddings (pgvector + `bge-small-en-v1.5`) let recruiters search talent by meaning, not just keywords.
-- **Automated resume parsing** — PDF and DOCX resumes are parsed into structured profiles (skills, experience timeline, education).
-- **AI interview preparation** — generates tailored interview questions and prep material per candidate/role.
-- **Batch processing** — upload and screen large candidate sets in the background via Celery.
-- **Visual hiring pipeline** — drag-and-drop kanban to move candidates through stages.
-- **Analytics dashboard** — funnel, time-to-hire, and pipeline metrics.
-- **Real-time notifications** — in-app updates over WebSockets (Django Channels).
-- **Dual portals** — recruiter dashboard + candidate portal, with JWT + HTTP-only cookie auth and email verification.
+## Architecture
 
----
+```
+Candidate / Recruiter
+        |
+        v
+Next.js + TypeScript frontend  ──►  Django REST API (JWT, RBAC)
+                                          |
+                  ┌───────────────────────┼────────────────────────┐
+                  v                        v                        v
+            PostgreSQL              Celery + Redis            AI pipeline
+           (Supabase)            (async tasks)        resume parsing · semantic
+                                                      matching · hybrid scoring ·
+                                                      LLM insights (Ollama, local)
+```
+
+**Design principle — "Math decides, AI explains":** a deterministic scoring model produces
+the ranking and the numbers; the language model is used only to articulate *why*, never to
+make the decision. This keeps results consistent and defensible.
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | Next.js (App Router) · TypeScript · TailwindCSS · shadcn/ui |
-| Backend | Django 5.2 · Django REST Framework · SimpleJWT |
-| Realtime | Django Channels · Daphne · channels-redis |
-| Database | PostgreSQL + **pgvector** (Supabase-managed in production) |
-| Task queue | Celery + Redis |
-| AI / ML | Ollama-served LLM (Qwen family) · `sentence-transformers` · `BAAI/bge-small-en-v1.5` (384-dim) |
-| Resume parsing | `pdfplumber` · `python-docx` |
-| Auth | JWT + HTTP-only cookies |
-| Tooling | Ruff · Pytest · ESLint · Prettier · pre-commit |
-| CI/CD | GitHub Actions |
+| Frontend | Next.js, TypeScript, Tailwind CSS, shadcn/ui |
+| Backend | Django, Django REST Framework, SimpleJWT |
+| Database | PostgreSQL (Supabase-managed in production) |
+| Authentication | JWT with HTTP-only cookies |
+| Task queue | Celery, Redis |
+| AI / LLM | Ollama (local LLM), embedding-based semantic search, hybrid scoring |
+| Testing | Playwright, pytest |
+| DevOps | Docker, GitHub Actions (CI/CD); deployed on Railway and Vercel |
 
----
+## Getting Started
 
-## Architecture
+### Prerequisites
 
-```
-┌──────────────┐      ┌─────────────────────┐      ┌──────────────┐
-│  Next.js UI  │ ───▶ │  Django REST API    │ ───▶ │  PostgreSQL  │
-│  (dashboard  │ ◀─── │  + Channels (WS)    │ ◀─── │  + pgvector  │
-│  + candidate)│      └─────────┬───────────┘      └──────────────┘
-└──────────────┘                │
-                                ▼
-                   ┌────────────────────────┐     ┌──────────────┐
-                   │  Celery workers        │ ──▶ │  Ollama LLM  │
-                   │  (parsing, ranking,    │     │  + embeddings│
-                   │   batch, notifications)│     └──────────────┘
-                   └───────────┬────────────┘
-                               ▼
-                          ┌─────────┐
-                          │  Redis  │  (broker + channel layer)
-                          └─────────┘
-```
+- Docker and Docker Compose
+- (For local LLM features) Ollama installed and running
 
-### Backend apps (`backend/apps/`)
-
-| App | Responsibility |
-|-----|----------------|
-| `accounts` | Users, authentication, JWT cookie flows, email verification |
-| `organizations` | Multi-tenant orgs and membership |
-| `jobs` | Job postings and requirements |
-| `candidates` | Candidate profiles, resumes, applications, notes |
-| `ai_engine` | Embeddings, ranking, semantic search, experience timeline |
-| `interviews` | AI-generated interview prep and questions |
-| `pipeline` | Hiring stages and candidate movement |
-| `batch` | Bulk resume upload and background screening |
-| `analytics` | Recruitment metrics and reporting |
-| `notifications` | Real-time + persisted notifications |
-| `core` | Shared utilities, health checks, base models |
-
-### Frontend routes (`frontend/app/`)
-
-- **`(dashboard)`** — recruiter app: `jobs`, `candidates`, `applications`, `pipeline`, `search`, `batch`, `analytics`, `settings`
-- **`(candidate)`** — candidate portal: `dashboard`, `applications`
-- **`(public)`** — `login`, `register`, `jobs`, `pending-verification`
-
----
-
-## Quick Start
-
-### 1. Configure environment
+### 1. Configure environment variables
 
 ```bash
 cp .env.example .env
@@ -129,14 +108,13 @@ docker compose up --build
 docker compose exec django python manage.py migrate
 ```
 
-### 3. Or run services locally
+### 3. Or run the services locally
 
 **Backend**
 
-```powershell
+```bash
 cd backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+python -m venv .venv && source .venv/bin/activate   # Windows: .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 python manage.py migrate
 python manage.py runserver
@@ -144,15 +122,11 @@ python manage.py runserver
 
 **Frontend**
 
-```powershell
+```bash
 cd frontend
 npm install
 npm run dev
 ```
-
-> **AI features** require a running [Ollama](https://ollama.com) instance and will download the `bge-small-en-v1.5` embedding model on first use. Set `OLLAMA_BASE_URL`, `LLM_MODEL`, and `EMBEDDING_MODEL` in `.env`.
-
----
 
 ## Service URLs
 
@@ -163,69 +137,23 @@ npm run dev
 | Health check | http://localhost:8000/api/v1/health/ |
 | Django admin | http://localhost:8000/admin/ |
 
----
-
-## Development
-
-**Backend**
-
-```bash
-pytest                    # Run tests
-ruff check .              # Lint
-ruff format .             # Format
-python manage.py check    # Validate Django config
-```
-
-**Frontend**
-
-```bash
-npm run dev               # Dev server
-npm run lint              # ESLint
-npm run type-check        # TypeScript
-npm run format            # Prettier
-```
-
-**Pre-commit**
-
-```bash
-pre-commit install         # Install hooks (run once)
-pre-commit run --all-files # Run all hooks manually
-```
-
----
-
-## Repository Layout
+## Project Structure
 
 ```
-backend/        Django API — apps, config, migrations, Celery tasks
-frontend/       Next.js — App Router, components, types
-supabase/       Supabase local dev config
-infrastructure/ Docker and deployment support
-raw/            Human-managed vault (architecture, ADRs, sprints)
-wiki/           Knowledge base (Obsidian)
+backend/         Django API — apps, config, migrations
+frontend/        Next.js — app router, components, types
+supabase/        Supabase local development config
+infrastructure/  Docker and deployment support
 ```
 
----
+## License
 
-## Documentation
+Released under the [MIT License](LICENSE).
 
-| Document | Location |
-|----------|---------|
-| System Overview | `raw/architecture/system-overview.md` |
-| Development Setup | `raw/architecture/development-setup.md` |
-| Environment Variables | `raw/architecture/environment-variables.md` |
-| Auth Strategy | `raw/architecture/cookie-auth-strategy.md` |
-| Architecture Decision Records | `raw/decisions/` |
+## Author
 
----
-
-## Deployment
-
-Production runs the **frontend on Vercel** and the **backend on Railway** (Django served by Daphne, a Celery worker, PostgreSQL + pgvector, and Redis). The frontend proxies API calls through its own origin so auth cookies stay first-party.
-
-See **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** for the full step-by-step guide (services, environment variables, and cross-site cookie setup).
-
----
+**Parthiv A M** — Full Stack Developer (Python, Django, React, Next.js) with a focus on AI/LLM integration.
+[GitHub](https://github.com/Paaarthiv) · [LinkedIn](https://www.linkedin.com/in/parthivam)
 
 ## License
 
