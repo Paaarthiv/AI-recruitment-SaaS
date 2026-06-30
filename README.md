@@ -2,6 +2,23 @@
   <img src="docs/banner.png" alt="SkillScout — AI Recruitment SaaS · Math ranks. AI explains. You decide." width="100%" />
 </p>
 
+<p align="center">
+  <img src="assets/banner.png" alt="SkillScout — AI Recruitment & ATS Platform" width="100%">
+</p>
+<h1 align="center">SkillScout</h1>
+<p align="center">
+  An enterprise-grade, multi-tenant AI recruitment and applicant-tracking platform.
+  <br>
+  <strong>Math decides, AI explains.</strong>
+</p>
+<p align="center">
+  <img src="https://img.shields.io/badge/Backend-Django%20REST-092E20?logo=django&logoColor=white" alt="Django REST">
+  <img src="https://img.shields.io/badge/Frontend-Next.js%20%C2%B7%20TypeScript-000000?logo=nextdotjs&logoColor=white" alt="Next.js">
+  <img src="https://img.shields.io/badge/Database-PostgreSQL%20%C2%B7%20Supabase-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL">
+  <img src="https://img.shields.io/badge/AI-Local%20LLM%20(Ollama)-0EA5E9?logo=ollama&logoColor=white" alt="Ollama">
+  <img src="https://img.shields.io/badge/License-MIT-blue" alt="MIT License">
+</p>
+
 ---
 
 ## Overview
